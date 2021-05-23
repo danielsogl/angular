@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -12,9 +12,7 @@ import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {AnimateApp} from './app/animate-app';
 
 @NgModule({declarations: [AnimateApp], bootstrap: [AnimateApp], imports: [BrowserAnimationsModule]})
-class ExampleModule {
+export class ExampleModule {
 }
 
-export function main() {
-  platformBrowserDynamic().bootstrapModule(ExampleModule);
-}
+platformBrowserDynamic().bootstrapModule(ExampleModule);

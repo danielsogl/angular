@@ -1,13 +1,15 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {$, ExpectedConditions, browser, by, element} from 'protractor';
-import {verifyNoBrowserErrors} from '../../../../_common/e2e_util';
+import {modifiedInIvy} from '@angular/private/testing';
+import {$, browser, by, element, ExpectedConditions} from 'protractor';
+
+import {verifyNoBrowserErrors} from '../../../../test-utils';
 
 function waitForElement(selector: string) {
   const EC = ExpectedConditions;
@@ -16,7 +18,7 @@ function waitForElement(selector: string) {
 }
 
 describe('ngIf', () => {
-  const URL = 'common/ngIf/ts/';
+  const URL = '/ngIf';
   afterEach(verifyNoBrowserErrors);
 
   describe('ng-if-simple', () => {
@@ -44,6 +46,7 @@ describe('ngIf', () => {
 
   describe('ng-if-then-else', () => {
     let comp = 'ng-if-then-else';
+
     it('should hide/show content', () => {
       browser.get(URL);
       waitForElement(comp);
@@ -58,8 +61,8 @@ describe('ngIf', () => {
     });
   });
 
-  describe('ng-if-let', () => {
-    let comp = 'ng-if-let';
+  describe('ng-if-as', () => {
+    let comp = 'ng-if-as';
     it('should hide/show content', () => {
       browser.get(URL);
       waitForElement(comp);

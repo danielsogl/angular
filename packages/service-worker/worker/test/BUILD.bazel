@@ -1,9 +1,15 @@
-load("//tools:defaults.bzl", "ts_library")
-load("@build_bazel_rules_nodejs//:defs.bzl", "jasmine_node_test")
+load("//tools:defaults.bzl", "jasmine_node_test", "ts_library")
+load("//tools/circular_dependency_test:index.bzl", "circular_dependency_test")
+
+circular_dependency_test(
+    name = "circular_deps_test",
+    entry_point = "angular/packages/service-worker/worker/main.js",
+    deps = ["//packages/service-worker/worker:main"],
+)
 
 ts_library(
     name = "test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = glob(
         ["**/*.ts"],
     ),
@@ -17,7 +23,6 @@ ts_library(
 
 jasmine_node_test(
     name = "test",
-    srcs = [],
     deps = [
         ":test_lib",
     ],

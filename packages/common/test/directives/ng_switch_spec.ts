@@ -1,32 +1,36 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {CommonModule} from '@angular/common';
-import {Attribute, Component, Directive} from '@angular/core';
-import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {Attribute, Component, Directive, TemplateRef, ViewChild,} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
 
 {
   describe('NgSwitch', () => {
     let fixture: ComponentFixture<any>;
 
-    function getComponent(): TestComponent { return fixture.componentInstance; }
+    function getComponent(): TestComponent {
+      return fixture.componentInstance;
+    }
 
     function detectChangesAndExpectText(text: string): void {
       fixture.detectChanges();
       expect(fixture.nativeElement).toHaveText(text);
     }
 
-    afterEach(() => { fixture = null !; });
+    afterEach(() => {
+      fixture = null!;
+    });
 
     beforeEach(() => {
       TestBed.configureTestingModule({
-        declarations: [TestComponent],
+        declarations: [TestComponent, ComplexComponent],
         imports: [CommonModule],
       });
     });
@@ -118,13 +122,14 @@ import {expect} from '@angular/platform-browser/testing/src/matchers';
     });
 
     describe('corner cases', () => {
-
       it('should not create the default case if another case matches', () => {
         const log: string[] = [];
 
         @Directive({selector: '[test]'})
         class TestDirective {
-          constructor(@Attribute('test') test: string) { log.push(test); }
+          constructor(@Attribute('test') test: string) {
+            log.push(test);
+          }
         }
 
         const template = '<div [ngSwitch]="switchValue">' +
@@ -133,9 +138,7 @@ import {expect} from '@angular/platform-browser/testing/src/matchers';
             '</div>';
 
         TestBed.configureTestingModule({declarations: [TestDirective]});
-        TestBed.overrideComponent(TestComponent, {set: {template: template}})
-            .createComponent(TestComponent);
-        const fixture = TestBed.createComponent(TestComponent);
+        const fixture = createTestComponent(template);
         fixture.componentInstance.switchValue = 'a';
 
         fixture.detectChanges();
@@ -151,7 +154,6 @@ import {expect} from '@angular/platform-browser/testing/src/matchers';
 
         fixture = createTestComponent(template);
         detectChangesAndExpectText('when default1;when default2;');
-
       });
 
       it('should allow defaults before cases', () => {
@@ -173,6 +175,38 @@ import {expect} from '@angular/platform-browser/testing/src/matchers';
         getComponent().switchValue = 'b';
         detectChangesAndExpectText('when b1;when b2;');
       });
+
+      it('should throw error when ngSwitchCase is used outside of ngSwitch', waitForAsync(() => {
+           const template = '<div [ngSwitch]="switchValue"></div>' +
+               '<div *ngSwitchCase="\'a\'"></div>';
+
+           expect(() => createTestComponent(template))
+               .toThrowError(
+                   'NG0305: An element with the "ngSwitchCase" attribute (matching the "NgSwitchCase" directive) must be located inside an element with the "ngSwitch" attribute (matching "NgSwitch" directive)');
+         }));
+
+      it('should throw error when ngSwitchDefault is used outside of ngSwitch', waitForAsync(() => {
+           const template = '<div [ngSwitch]="switchValue"></div>' +
+               '<div *ngSwitchDefault></div>';
+
+           expect(() => createTestComponent(template))
+               .toThrowError(
+                   'NG0305: An element with the "ngSwitchDefault" attribute (matching the "NgSwitchDefault" directive) must be located inside an element with the "ngSwitch" attribute (matching "NgSwitch" directive)');
+         }));
+
+      it('should support nested NgSwitch on ng-container with ngTemplateOutlet', () => {
+        fixture = TestBed.createComponent(ComplexComponent);
+        detectChangesAndExpectText('Foo');
+
+        fixture.componentInstance.state = 'case2';
+        detectChangesAndExpectText('Bar');
+
+        fixture.componentInstance.state = 'notACase';
+        detectChangesAndExpectText('Default');
+
+        fixture.componentInstance.state = 'case1';
+        detectChangesAndExpectText('Foo');
+      });
     });
   });
 }
@@ -182,6 +216,38 @@ class TestComponent {
   switchValue: any = null;
   when1: any = null;
   when2: any = null;
+}
+
+@Component({
+  selector: 'complex-cmp',
+  template: `
+<div [ngSwitch]="state">
+  <ng-container *ngSwitchCase="'case1'" [ngSwitch]="true">
+    <ng-container *ngSwitchCase="true" [ngTemplateOutlet]="foo"></ng-container>
+    <span *ngSwitchDefault>Should never render</span>
+  </ng-container>
+  <ng-container *ngSwitchCase="'case2'" [ngSwitch]="true">
+    <ng-container *ngSwitchCase="true" [ngTemplateOutlet]="bar"></ng-container>
+    <span *ngSwitchDefault>Should never render</span>
+  </ng-container>
+  <ng-container *ngSwitchDefault [ngSwitch]="false">
+    <ng-container *ngSwitchCase="true" [ngTemplateOutlet]="foo"></ng-container>
+    <span *ngSwitchDefault>Default</span>
+  </ng-container>
+</div>
+
+<ng-template #foo>
+  <span>Foo</span>
+</ng-template>
+<ng-template #bar>
+  <span>Bar</span>
+</ng-template>
+`
+})
+class ComplexComponent {
+  @ViewChild('foo', {static: true}) foo!: TemplateRef<any>;
+  @ViewChild('bar', {static: true}) bar!: TemplateRef<any>;
+  state: string = 'case1';
 }
 
 function createTestComponent(template: string): ComponentFixture<TestComponent> {

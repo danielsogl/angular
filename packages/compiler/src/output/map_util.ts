@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -20,10 +20,11 @@ export function mapEntry(key: string, value: o.Expression): MapEntry {
   return {key, value, quoted: false};
 }
 
-export function mapLiteral(obj: {[key: string]: o.Expression}): o.Expression {
+export function mapLiteral(
+    obj: {[key: string]: o.Expression}, quoted: boolean = false): o.Expression {
   return o.literalMap(Object.keys(obj).map(key => ({
                                              key,
-                                             quoted: false,
+                                             quoted,
                                              value: obj[key],
                                            })));
 }

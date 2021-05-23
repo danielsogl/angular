@@ -1,91 +1,319 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {GeneratedFile} from '@angular/compiler';
-import * as path from 'path';
 import * as ts from 'typescript';
 
 import * as api from '../transformers/api';
+import {verifySupportedTypeScriptVersion} from '../typescript_support';
 
-import {ComponentDecoratorHandler, DirectiveDecoratorHandler, InjectableDecoratorHandler, NgModuleDecoratorHandler, PipeDecoratorHandler, ResourceLoader, SelectorScopeRegistry} from './annotations';
-import {CompilerHost} from './compiler_host';
-import {TypeScriptReflectionHost} from './metadata';
-import {FileResourceLoader, HostResourceLoader} from './resource_loader';
-import {IvyCompilation, ivyTransformFactory} from './transform';
+import {CompilationTicket, freshCompilationTicket, incrementalFromCompilerTicket, NgCompiler, NgCompilerHost} from './core';
+import {NgCompilerOptions} from './core/api';
+import {absoluteFrom, AbsoluteFsPath, getFileSystem} from './file_system';
+import {TrackedIncrementalBuildStrategy} from './incremental';
+import {IndexedComponent} from './indexer';
+import {ActivePerfRecorder, PerfCheckpoint as PerfCheckpoint, PerfEvent, PerfPhase} from './perf';
+import {TsCreateProgramDriver} from './program_driver';
+import {DeclarationNode} from './reflection';
+import {retagAllTsFiles, untagAllTsFiles} from './shims';
+import {OptimizeFor} from './typecheck/api';
 
+
+
+/**
+ * Entrypoint to the Angular Compiler (Ivy+) which sits behind the `api.Program` interface, allowing
+ * it to be a drop-in replacement for the legacy View Engine compiler to tooling such as the
+ * command-line main() function or the Angular CLI.
+ */
 export class NgtscProgram implements api.Program {
-  private tsProgram: ts.Program;
-  private resourceLoader: ResourceLoader;
-  private compilation: IvyCompilation|undefined = undefined;
+  readonly compiler: NgCompiler;
 
-  private _coreImportsFrom: ts.SourceFile|null|undefined = undefined;
-  private _reflector: TypeScriptReflectionHost|undefined = undefined;
-  private _isCore: boolean|undefined = undefined;
+  /**
+   * The primary TypeScript program, which is used for analysis and emit.
+   */
+  private tsProgram: ts.Program;
+
+  private closureCompilerEnabled: boolean;
+  private host: NgCompilerHost;
+  private incrementalStrategy: TrackedIncrementalBuildStrategy;
 
   constructor(
-      rootNames: ReadonlyArray<string>, private options: api.CompilerOptions,
-      private host: api.CompilerHost, oldProgram?: api.Program) {
-    this.resourceLoader = host.readResource !== undefined ?
-        new HostResourceLoader(host.readResource.bind(host)) :
-        new FileResourceLoader();
+      rootNames: ReadonlyArray<string>, private options: NgCompilerOptions,
+      delegateHost: api.CompilerHost, oldProgram?: NgtscProgram) {
+    const perfRecorder = ActivePerfRecorder.zeroedToNow();
 
-    this.tsProgram =
-        ts.createProgram(rootNames, options, host, oldProgram && oldProgram.getTsProgram());
+    perfRecorder.phase(PerfPhase.Setup);
+
+    // First, check whether the current TS version is supported.
+    if (!options.disableTypeScriptVersionCheck) {
+      verifySupportedTypeScriptVersion();
+    }
+
+    this.closureCompilerEnabled = !!options.annotateForClosureCompiler;
+
+    const reuseProgram = oldProgram?.compiler.getCurrentProgram();
+    this.host = NgCompilerHost.wrap(delegateHost, rootNames, options, reuseProgram ?? null);
+
+    if (reuseProgram !== undefined) {
+      // Prior to reusing the old program, restore shim tagging for all its `ts.SourceFile`s.
+      // TypeScript checks the `referencedFiles` of `ts.SourceFile`s for changes when evaluating
+      // incremental reuse of data from the old program, so it's important that these match in order
+      // to get the most benefit out of reuse.
+      retagAllTsFiles(reuseProgram);
+    }
+
+    this.tsProgram = perfRecorder.inPhase(
+        PerfPhase.TypeScriptProgramCreate,
+        () => ts.createProgram(this.host.inputFiles, options, this.host, reuseProgram));
+
+    perfRecorder.phase(PerfPhase.Unaccounted);
+    perfRecorder.memory(PerfCheckpoint.TypeScriptProgramCreate);
+
+    this.host.postProgramCreationCleanup();
+
+    // Shim tagging has served its purpose, and tags can now be removed from all `ts.SourceFile`s in
+    // the program.
+    untagAllTsFiles(this.tsProgram);
+
+    const programDriver = new TsCreateProgramDriver(
+        this.tsProgram, this.host, this.options, this.host.shimExtensionPrefixes);
+
+    this.incrementalStrategy = oldProgram !== undefined ?
+        oldProgram.incrementalStrategy.toNextBuildStrategy() :
+        new TrackedIncrementalBuildStrategy();
+    const modifiedResourceFiles = new Set<AbsoluteFsPath>();
+    if (this.host.getModifiedResourceFiles !== undefined) {
+      const strings = this.host.getModifiedResourceFiles();
+      if (strings !== undefined) {
+        for (const fileString of strings) {
+          modifiedResourceFiles.add(absoluteFrom(fileString));
+        }
+      }
+    }
+
+    let ticket: CompilationTicket;
+    if (oldProgram === undefined) {
+      ticket = freshCompilationTicket(
+          this.tsProgram, options, this.incrementalStrategy, programDriver, perfRecorder,
+          /* enableTemplateTypeChecker */ false, /* usePoisonedData */ false);
+    } else {
+      ticket = incrementalFromCompilerTicket(
+          oldProgram.compiler,
+          this.tsProgram,
+          this.incrementalStrategy,
+          programDriver,
+          modifiedResourceFiles,
+          perfRecorder,
+      );
+    }
+
+
+    // Create the NgCompiler which will drive the rest of the compilation.
+    this.compiler = NgCompiler.fromTicket(ticket, this.host);
   }
 
-  getTsProgram(): ts.Program { return this.tsProgram; }
+  getTsProgram(): ts.Program {
+    return this.tsProgram;
+  }
+
+  getReuseTsProgram(): ts.Program {
+    return this.compiler.getCurrentProgram();
+  }
 
   getTsOptionDiagnostics(cancellationToken?: ts.CancellationToken|
-                         undefined): ReadonlyArray<ts.Diagnostic> {
-    return this.tsProgram.getOptionsDiagnostics(cancellationToken);
-  }
-
-  getNgOptionDiagnostics(cancellationToken?: ts.CancellationToken|
-                         undefined): ReadonlyArray<api.Diagnostic> {
-    return [];
+                         undefined): readonly ts.Diagnostic[] {
+    return this.compiler.perfRecorder.inPhase(
+        PerfPhase.TypeScriptDiagnostics,
+        () => this.tsProgram.getOptionsDiagnostics(cancellationToken));
   }
 
   getTsSyntacticDiagnostics(
       sourceFile?: ts.SourceFile|undefined,
-      cancellationToken?: ts.CancellationToken|undefined): ReadonlyArray<ts.Diagnostic> {
-    return this.tsProgram.getSyntacticDiagnostics(sourceFile, cancellationToken);
-  }
+      cancellationToken?: ts.CancellationToken|undefined): readonly ts.Diagnostic[] {
+    return this.compiler.perfRecorder.inPhase(PerfPhase.TypeScriptDiagnostics, () => {
+      const ignoredFiles = this.compiler.ignoreForDiagnostics;
+      let res: readonly ts.Diagnostic[];
+      if (sourceFile !== undefined) {
+        if (ignoredFiles.has(sourceFile)) {
+          return [];
+        }
 
-  getNgStructuralDiagnostics(cancellationToken?: ts.CancellationToken|
-                             undefined): ReadonlyArray<api.Diagnostic> {
-    return [];
+        res = this.tsProgram.getSyntacticDiagnostics(sourceFile, cancellationToken);
+      } else {
+        const diagnostics: ts.Diagnostic[] = [];
+        for (const sf of this.tsProgram.getSourceFiles()) {
+          if (!ignoredFiles.has(sf)) {
+            diagnostics.push(...this.tsProgram.getSyntacticDiagnostics(sf, cancellationToken));
+          }
+        }
+        res = diagnostics;
+      }
+      return res;
+    });
   }
 
   getTsSemanticDiagnostics(
       sourceFile?: ts.SourceFile|undefined,
-      cancellationToken?: ts.CancellationToken|undefined): ReadonlyArray<ts.Diagnostic> {
-    return this.tsProgram.getSemanticDiagnostics(sourceFile, cancellationToken);
+      cancellationToken?: ts.CancellationToken|undefined): readonly ts.Diagnostic[] {
+    return this.compiler.perfRecorder.inPhase(PerfPhase.TypeScriptDiagnostics, () => {
+      const ignoredFiles = this.compiler.ignoreForDiagnostics;
+      let res: readonly ts.Diagnostic[];
+      if (sourceFile !== undefined) {
+        if (ignoredFiles.has(sourceFile)) {
+          return [];
+        }
+
+        res = this.tsProgram.getSemanticDiagnostics(sourceFile, cancellationToken);
+      } else {
+        const diagnostics: ts.Diagnostic[] = [];
+        for (const sf of this.tsProgram.getSourceFiles()) {
+          if (!ignoredFiles.has(sf)) {
+            diagnostics.push(...this.tsProgram.getSemanticDiagnostics(sf, cancellationToken));
+          }
+        }
+        res = diagnostics;
+      }
+      return res;
+    });
   }
 
-  getNgSemanticDiagnostics(
-      fileName?: string|undefined,
-      cancellationToken?: ts.CancellationToken|undefined): ReadonlyArray<api.Diagnostic> {
+  getNgOptionDiagnostics(cancellationToken?: ts.CancellationToken|
+                         undefined): readonly(ts.Diagnostic|api.Diagnostic)[] {
+    return this.compiler.getOptionDiagnostics();
+  }
+
+  getNgStructuralDiagnostics(cancellationToken?: ts.CancellationToken|
+                             undefined): readonly api.Diagnostic[] {
     return [];
   }
 
-  async loadNgStructureAsync(): Promise<void> {
-    if (this.compilation === undefined) {
-      this.compilation = this.makeCompilation();
+  getNgSemanticDiagnostics(
+      fileName?: string|undefined, cancellationToken?: ts.CancellationToken|undefined):
+      readonly(ts.Diagnostic|api.Diagnostic)[] {
+    let sf: ts.SourceFile|undefined = undefined;
+    if (fileName !== undefined) {
+      sf = this.tsProgram.getSourceFile(fileName);
+      if (sf === undefined) {
+        // There are no diagnostics for files which don't exist in the program - maybe the caller
+        // has stale data?
+        return [];
+      }
+    }
 
-      await this.tsProgram.getSourceFiles()
-          .filter(file => !file.fileName.endsWith('.d.ts'))
-          .map(file => this.compilation !.analyzeAsync(file))
-          .filter((result): result is Promise<void> => result !== undefined);
+    if (sf === undefined) {
+      return this.compiler.getDiagnostics();
+    } else {
+      return this.compiler.getDiagnosticsForFile(sf, OptimizeFor.WholeProgram);
     }
   }
 
+  /**
+   * Ensure that the `NgCompiler` has properly analyzed the program, and allow for the asynchronous
+   * loading of any resources during the process.
+   *
+   * This is used by the Angular CLI to allow for spawning (async) child compilations for things
+   * like SASS files used in `styleUrls`.
+   */
+  loadNgStructureAsync(): Promise<void> {
+    return this.compiler.analyzeAsync();
+  }
+
   listLazyRoutes(entryRoute?: string|undefined): api.LazyRoute[] {
-    throw new Error('Method not implemented.');
+    return this.compiler.listLazyRoutes(entryRoute);
+  }
+
+  emit(opts?: {
+    emitFlags?: api.EmitFlags|undefined;
+    cancellationToken?: ts.CancellationToken | undefined;
+    customTransformers?: api.CustomTransformers | undefined;
+    emitCallback?: api.TsEmitCallback | undefined;
+    mergeEmitResultsCallback?: api.TsMergeEmitResultsCallback | undefined;
+  }|undefined): ts.EmitResult {
+    this.compiler.perfRecorder.memory(PerfCheckpoint.PreEmit);
+
+    const res = this.compiler.perfRecorder.inPhase(PerfPhase.TypeScriptEmit, () => {
+      const {transformers} = this.compiler.prepareEmit();
+      const ignoreFiles = this.compiler.ignoreForEmit;
+      const emitCallback = opts && opts.emitCallback || defaultEmitCallback;
+
+      const writeFile: ts.WriteFileCallback =
+          (fileName: string, data: string, writeByteOrderMark: boolean,
+           onError: ((message: string) => void)|undefined,
+           sourceFiles: ReadonlyArray<ts.SourceFile>|undefined) => {
+            if (sourceFiles !== undefined) {
+              // Record successful writes for any `ts.SourceFile` (that's not a declaration file)
+              // that's an input to this write.
+              for (const writtenSf of sourceFiles) {
+                if (writtenSf.isDeclarationFile) {
+                  continue;
+                }
+
+                this.compiler.incrementalCompilation.recordSuccessfulEmit(writtenSf);
+              }
+            }
+            this.host.writeFile(fileName, data, writeByteOrderMark, onError, sourceFiles);
+          };
+
+      const customTransforms = opts && opts.customTransformers;
+      const beforeTransforms = transformers.before || [];
+      const afterDeclarationsTransforms = transformers.afterDeclarations;
+
+      if (customTransforms !== undefined && customTransforms.beforeTs !== undefined) {
+        beforeTransforms.push(...customTransforms.beforeTs);
+      }
+
+      const emitResults: ts.EmitResult[] = [];
+
+      for (const targetSourceFile of this.tsProgram.getSourceFiles()) {
+        if (targetSourceFile.isDeclarationFile || ignoreFiles.has(targetSourceFile)) {
+          continue;
+        }
+
+        if (this.compiler.incrementalCompilation.safeToSkipEmit(targetSourceFile)) {
+          this.compiler.perfRecorder.eventCount(PerfEvent.EmitSkipSourceFile);
+          continue;
+        }
+
+        this.compiler.perfRecorder.eventCount(PerfEvent.EmitSourceFile);
+
+        emitResults.push(emitCallback({
+          targetSourceFile,
+          program: this.tsProgram,
+          host: this.host,
+          options: this.options,
+          emitOnlyDtsFiles: false,
+          writeFile,
+          customTransformers: {
+            before: beforeTransforms,
+            after: customTransforms && customTransforms.afterTs,
+            afterDeclarations: afterDeclarationsTransforms,
+          } as any,
+        }));
+      }
+
+      this.compiler.perfRecorder.memory(PerfCheckpoint.Emit);
+
+      // Run the emit, including a custom transformer that will downlevel the Ivy decorators in
+      // code.
+      return ((opts && opts.mergeEmitResultsCallback) || mergeEmitResults)(emitResults);
+    });
+
+    // Record performance analysis information to disk if we've been asked to do so.
+    if (this.options.tracePerformance !== undefined) {
+      const perf = this.compiler.perfRecorder.finalize();
+      getFileSystem().writeFile(
+          getFileSystem().resolve(this.options.tracePerformance), JSON.stringify(perf, null, 2));
+    }
+    return res;
+  }
+
+  getIndexedComponents(): Map<DeclarationNode, IndexedComponent> {
+    return this.compiler.getIndexedComponents();
   }
 
   getLibrarySummaries(): Map<string, api.LibrarySummary> {
@@ -99,94 +327,18 @@ export class NgtscProgram implements api.Program {
   getEmittedSourceFiles(): Map<string, ts.SourceFile> {
     throw new Error('Method not implemented.');
   }
-
-  emit(opts?: {
-    emitFlags?: api.EmitFlags,
-    cancellationToken?: ts.CancellationToken,
-    customTransformers?: api.CustomTransformers,
-    emitCallback?: api.TsEmitCallback,
-    mergeEmitResultsCallback?: api.TsMergeEmitResultsCallback
-  }): ts.EmitResult {
-    const emitCallback = opts && opts.emitCallback || defaultEmitCallback;
-
-    if (this.compilation === undefined) {
-      this.compilation = this.makeCompilation();
-      this.tsProgram.getSourceFiles()
-          .filter(file => !file.fileName.endsWith('.d.ts'))
-          .forEach(file => this.compilation !.analyzeSync(file));
-    }
-
-    // Since there is no .d.ts transformation API, .d.ts files are transformed during write.
-    const writeFile: ts.WriteFileCallback =
-        (fileName: string, data: string, writeByteOrderMark: boolean,
-         onError: ((message: string) => void) | undefined,
-         sourceFiles: ReadonlyArray<ts.SourceFile>) => {
-          if (fileName.endsWith('.d.ts')) {
-            data = sourceFiles.reduce(
-                (data, sf) => this.compilation !.transformedDtsFor(sf.fileName, data, fileName),
-                data);
-          }
-          this.host.writeFile(fileName, data, writeByteOrderMark, onError, sourceFiles);
-        };
-
-
-    // Run the emit, including a custom transformer that will downlevel the Ivy decorators in code.
-    const emitResult = emitCallback({
-      program: this.tsProgram,
-      host: this.host,
-      options: this.options,
-      emitOnlyDtsFiles: false, writeFile,
-      customTransformers: {
-        before: [ivyTransformFactory(this.compilation !, this.reflector, this.coreImportsFrom)],
-      },
-    });
-    return emitResult;
-  }
-
-  private makeCompilation(): IvyCompilation {
-    const checker = this.tsProgram.getTypeChecker();
-    const scopeRegistry = new SelectorScopeRegistry(checker, this.reflector);
-
-    // Set up the IvyCompilation, which manages state for the Ivy transformer.
-    const handlers = [
-      new ComponentDecoratorHandler(
-          checker, this.reflector, scopeRegistry, this.isCore, this.resourceLoader),
-      new DirectiveDecoratorHandler(checker, this.reflector, scopeRegistry, this.isCore),
-      new InjectableDecoratorHandler(this.reflector, this.isCore),
-      new NgModuleDecoratorHandler(checker, this.reflector, scopeRegistry, this.isCore),
-      new PipeDecoratorHandler(checker, this.reflector, scopeRegistry, this.isCore),
-    ];
-
-    return new IvyCompilation(handlers, checker, this.reflector, this.coreImportsFrom);
-  }
-
-  private get reflector(): TypeScriptReflectionHost {
-    if (this._reflector === undefined) {
-      this._reflector = new TypeScriptReflectionHost(this.tsProgram.getTypeChecker());
-    }
-    return this._reflector;
-  }
-
-  private get coreImportsFrom(): ts.SourceFile|null {
-    if (this._coreImportsFrom === undefined) {
-      this._coreImportsFrom = this.isCore && getR3SymbolsFile(this.tsProgram) || null;
-    }
-    return this._coreImportsFrom;
-  }
-
-  private get isCore(): boolean {
-    if (this._isCore === undefined) {
-      this._isCore = isAngularCorePackage(this.tsProgram);
-    }
-    return this._isCore;
-  }
 }
 
-const defaultEmitCallback: api.TsEmitCallback =
-    ({program, targetSourceFile, writeFile, cancellationToken, emitOnlyDtsFiles,
-      customTransformers}) =>
-        program.emit(
-            targetSourceFile, writeFile, cancellationToken, emitOnlyDtsFiles, customTransformers);
+const defaultEmitCallback: api.TsEmitCallback = ({
+  program,
+  targetSourceFile,
+  writeFile,
+  cancellationToken,
+  emitOnlyDtsFiles,
+  customTransformers
+}) =>
+    program.emit(
+        targetSourceFile, writeFile, cancellationToken, emitOnlyDtsFiles, customTransformers);
 
 function mergeEmitResults(emitResults: ts.EmitResult[]): ts.EmitResult {
   const diagnostics: ts.Diagnostic[] = [];
@@ -197,49 +349,6 @@ function mergeEmitResults(emitResults: ts.EmitResult[]): ts.EmitResult {
     emitSkipped = emitSkipped || er.emitSkipped;
     emittedFiles.push(...(er.emittedFiles || []));
   }
+
   return {diagnostics, emitSkipped, emittedFiles};
-}
-
-/**
- * Find the 'r3_symbols.ts' file in the given `Program`, or return `null` if it wasn't there.
- */
-function getR3SymbolsFile(program: ts.Program): ts.SourceFile|null {
-  return program.getSourceFiles().find(file => file.fileName.indexOf('r3_symbols.ts') >= 0) || null;
-}
-
-/**
- * Determine if the given `Program` is @angular/core.
- */
-function isAngularCorePackage(program: ts.Program): boolean {
-  // Look for its_just_angular.ts somewhere in the program.
-  const r3Symbols = getR3SymbolsFile(program);
-  if (r3Symbols === null) {
-    return false;
-  }
-
-  // Look for the constant ITS_JUST_ANGULAR in that file.
-  return r3Symbols.statements.some(stmt => {
-    // The statement must be a variable declaration statement.
-    if (!ts.isVariableStatement(stmt)) {
-      return false;
-    }
-    // It must be exported.
-    if (stmt.modifiers === undefined ||
-        !stmt.modifiers.some(mod => mod.kind === ts.SyntaxKind.ExportKeyword)) {
-      return false;
-    }
-    // It must declare ITS_JUST_ANGULAR.
-    return stmt.declarationList.declarations.some(decl => {
-      // The declaration must match the name.
-      if (!ts.isIdentifier(decl.name) || decl.name.text !== 'ITS_JUST_ANGULAR') {
-        return false;
-      }
-      // It must initialize the variable to true.
-      if (decl.initializer === undefined || decl.initializer.kind !== ts.SyntaxKind.TrueKeyword) {
-        return false;
-      }
-      // This definition matches.
-      return true;
-    });
-  });
 }

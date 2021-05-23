@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-// #docregion Component, disabled-control
+// #docregion disabled-control
 import {Component, Inject} from '@angular/core';
 import {FormBuilder, FormControl, FormGroup, Validators} from '@angular/forms';
 // #enddocregion disabled-control
@@ -22,7 +22,7 @@ import {FormBuilder, FormControl, FormGroup, Validators} from '@angular/forms';
       <input formControlName="email" placeholder="Email">
       <button>Submit</button>
     </form>
-    
+
     <p>Value: {{ form.value | json }}</p>
     <p>Validation status: {{ form.status }}</p>
   `
@@ -31,16 +31,17 @@ export class FormBuilderComp {
   form: FormGroup;
 
   constructor(@Inject(FormBuilder) fb: FormBuilder) {
-    this.form = fb.group({
-      name: fb.group({
-        first: ['Nancy', Validators.minLength(2)],
-        last: 'Drew',
-      }),
-      email: '',
-    });
+    this.form = fb.group(
+        {
+          name: fb.group({
+            first: ['Nancy', Validators.minLength(2)],
+            last: 'Drew',
+          }),
+          email: '',
+        },
+        {updateOn: 'change'});
   }
 }
-// #enddocregion
 
 // #docregion disabled-control
 @Component({

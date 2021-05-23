@@ -1,11 +1,8 @@
-'use strict'; // necessary for es6 output in node
-
-import { browser, element, by, ExpectedConditions } from 'protractor';
+import { browser, element, by, ExpectedConditions as EC } from 'protractor';
 
 const numDashboardTabs = 5;
 const numCrises = 4;
-const numHeroes = 6;
-const EC = ExpectedConditions;
+const numHeroes = 10;
 
 describe('Router', () => {
 
@@ -13,73 +10,75 @@ describe('Router', () => {
 
   function getPageStruct() {
     const hrefEles = element.all(by.css('app-root > nav a'));
-    const crisisDetail = element.all(by.css('app-root > ng-component > ng-component > ng-component > div')).first();
-    const heroDetail = element(by.css('app-root > ng-component > div'));
+    const crisisDetail = element.all(by.css('app-root > div > app-crisis-center > app-crisis-list > app-crisis-detail > div')).first();
+    const heroDetail = element(by.css('app-root > div > app-hero-detail'));
 
     return {
       hrefs: hrefEles,
       activeHref: element(by.css('app-root > nav a.active')),
 
       crisisHref: hrefEles.get(0),
-      crisisList: element.all(by.css('app-root > ng-component > ng-component li')),
-      crisisDetail: crisisDetail,
+      crisisList: element.all(by.css('app-root > div > app-crisis-center > app-crisis-list li')),
+      crisisDetail,
       crisisDetailTitle: crisisDetail.element(by.xpath('*[1]')),
 
       heroesHref: hrefEles.get(1),
-      heroesList: element.all(by.css('app-root > ng-component li')),
-      heroDetail: heroDetail,
-      heroDetailTitle: heroDetail.element(by.xpath('*[1]')),
+      heroesList: element.all(by.css('app-root > div > app-hero-list li')),
+      heroDetail,
+      heroDetailTitle: heroDetail.element(by.xpath('*[2]')),
 
       adminHref: hrefEles.get(2),
-      adminPreloadList: element.all(by.css('app-root > ng-component > ng-component > ul > li')),
+      adminPage: element(by.css('app-root > div > app-admin')),
+      adminPreloadList: element.all(by.css('app-root > div > app-admin > app-admin-dashboard > ul > li')),
 
       loginHref: hrefEles.get(3),
-      loginButton: element.all(by.css('app-root > ng-component > p > button')),
+      loginButton: element.all(by.css('app-root > div > app-login > p > button')),
 
       contactHref: hrefEles.get(4),
       contactCancelButton: element.all(by.buttonText('Cancel')),
 
-      outletComponents: element.all(by.css('app-root > ng-component'))
+      primaryOutlet: element.all(by.css('app-root > div > app-hero-list')),
+      secondaryOutlet: element.all(by.css('app-root > app-compose-message'))
     };
   }
 
-  it('has expected dashboard tabs', () => {
+  it('has expected dashboard tabs', async () => {
     const page = getPageStruct();
-    expect(page.hrefs.count()).toEqual(numDashboardTabs, 'dashboard tab count');
-    expect(page.crisisHref.getText()).toEqual('Crisis Center');
-    expect(page.heroesHref.getText()).toEqual('Heroes');
-    expect(page.adminHref.getText()).toEqual('Admin');
-    expect(page.loginHref.getText()).toEqual('Login');
-    expect(page.contactHref.getText()).toEqual('Contact');
+    expect(await page.hrefs.count()).toEqual(numDashboardTabs, 'dashboard tab count');
+    expect(await page.crisisHref.getText()).toEqual('Crisis Center');
+    expect(await page.heroesHref.getText()).toEqual('Heroes');
+    expect(await page.adminHref.getText()).toEqual('Admin');
+    expect(await page.loginHref.getText()).toEqual('Login');
+    expect(await page.contactHref.getText()).toEqual('Contact');
   });
 
-  it('has heroes selected as opening tab', () => {
+  it('has heroes selected as opening tab', async () => {
     const page = getPageStruct();
-    expect(page.activeHref.getText()).toEqual('Heroes');
+    expect(await page.activeHref.getText()).toEqual('Heroes');
   });
 
   it('has crises center items', async () => {
     const page = getPageStruct();
     await page.crisisHref.click();
-    expect(page.activeHref.getText()).toEqual('Crisis Center');
-    expect(page.crisisList.count()).toBe(numCrises, 'crisis list count');
+    expect(await page.activeHref.getText()).toEqual('Crisis Center');
+    expect(await page.crisisList.count()).toBe(numCrises, 'crisis list count');
   });
 
   it('has hero items', async () => {
     const page = getPageStruct();
     await page.heroesHref.click();
-    expect(page.activeHref.getText()).toEqual('Heroes');
-    expect(page.heroesList.count()).toBe(numHeroes, 'hero list count');
+    expect(await page.activeHref.getText()).toEqual('Heroes');
+    expect(await page.heroesList.count()).toBe(numHeroes, 'hero list count');
   });
 
   it('toggles views', async () => {
     const page = getPageStruct();
     await page.crisisHref.click();
-    expect(page.activeHref.getText()).toEqual('Crisis Center');
-    expect(page.crisisList.count()).toBe(numCrises, 'crisis list count');
+    expect(await page.activeHref.getText()).toEqual('Crisis Center');
+    expect(await page.crisisList.count()).toBe(numCrises, 'crisis list count');
     await page.heroesHref.click();
-    expect(page.activeHref.getText()).toEqual('Heroes');
-    expect(page.heroesList.count()).toBe(numHeroes, 'hero list count');
+    expect(await page.activeHref.getText()).toEqual('Heroes');
+    expect(await page.heroesList.count()).toBe(numHeroes, 'hero list count');
   });
 
   it('saves changed crisis details', async () => {
@@ -98,23 +97,26 @@ describe('Router', () => {
   it('saves changed hero details', async () => {
     const page = getPageStruct();
     await page.heroesHref.click();
+    await browser.sleep(600);
     const heroEle = page.heroesList.get(4);
-    let text = await heroEle.getText();
+    const text = await heroEle.getText();
     expect(text.length).toBeGreaterThan(0, 'hero item text length');
     // remove leading id from text
     const heroText = text.substr(text.indexOf(' ')).trim();
 
     await heroEle.click();
-    expect(page.heroesList.count()).toBe(0, 'hero list count');
-    expect(page.heroDetail.isPresent()).toBe(true, 'hero detail');
-    expect(page.heroDetailTitle.getText()).toContain(heroText);
-    let inputEle = page.heroDetail.element(by.css('input'));
+    await browser.sleep(600);
+    expect(await page.heroesList.count()).toBe(0, 'hero list count');
+    expect(await page.heroDetail.isPresent()).toBe(true, 'hero detail');
+    expect(await page.heroDetailTitle.getText()).toContain(heroText);
+    const inputEle = page.heroDetail.element(by.css('input'));
     await inputEle.sendKeys('-foo');
-    expect(page.heroDetailTitle.getText()).toContain(heroText + '-foo');
+    expect(await page.heroDetailTitle.getText()).toContain(heroText + '-foo');
 
-    let buttonEle = page.heroDetail.element(by.css('button'));
+    const buttonEle = page.heroDetail.element(by.css('button'));
     await buttonEle.click();
-    expect(heroEle.getText()).toContain(heroText + '-foo');
+    await browser.sleep(600);
+    expect(await heroEle.getText()).toContain(heroText + '-foo');
   });
 
   it('sees preloaded modules', async () => {
@@ -122,7 +124,7 @@ describe('Router', () => {
     await page.loginHref.click();
     await page.loginButton.click();
     const list = page.adminPreloadList;
-    expect(list.count()).toBe(1, 'preloaded module');
+    expect(await list.count()).toBe(1, 'preloaded module');
     expect(await list.first().getText()).toBe('crisis-center', 'first preloaded module');
   });
 
@@ -130,33 +132,59 @@ describe('Router', () => {
     const page = getPageStruct();
     await page.heroesHref.click();
     await page.contactHref.click();
-    expect(page.outletComponents.count()).toBe(2, 'route count');
+    expect(await page.primaryOutlet.count()).toBe(1, 'primary outlet');
+    expect(await page.secondaryOutlet.count()).toBe(1, 'secondary outlet');
+  });
+
+  it('should redirect with secondary route', async () => {
+    const page = getPageStruct();
+
+    // go to login page and login
+    await browser.get('');
+    await page.loginHref.click();
+    await page.loginButton.click();
+
+    // open secondary outlet
+    await page.contactHref.click();
+
+    // go to login page and logout
+    await page.loginHref.click();
+    await page.loginButton.click();
+
+    // attempt to go to admin page, redirects to login with secondary outlet open
+    await page.adminHref.click();
+
+    // login, get redirected back to admin with outlet still open
+    await page.loginButton.click();
+
+    expect(await page.adminPage.isDisplayed()).toBeTruthy();
+    expect(await page.secondaryOutlet.count()).toBeTruthy();
   });
 
   async function crisisCenterEdit(index: number, save: boolean) {
     const page = getPageStruct();
     await page.crisisHref.click();
     let crisisEle = page.crisisList.get(index);
-    let text = await crisisEle.getText();
+    const text = await crisisEle.getText();
     expect(text.length).toBeGreaterThan(0, 'crisis item text length');
     // remove leading id from text
     const crisisText = text.substr(text.indexOf(' ')).trim();
 
     await crisisEle.click();
-    expect(page.crisisDetail.isPresent()).toBe(true, 'crisis detail present');
-    expect(page.crisisDetailTitle.getText()).toContain(crisisText);
-    let inputEle = page.crisisDetail.element(by.css('input'));
+    expect(await page.crisisDetail.isPresent()).toBe(true, 'crisis detail present');
+    expect(await page.crisisDetailTitle.getText()).toContain(crisisText);
+    const inputEle = page.crisisDetail.element(by.css('input'));
     await inputEle.sendKeys('-foo');
 
-    let buttonEle = page.crisisDetail.element(by.buttonText(save ? 'Save' : 'Cancel'));
+    const buttonEle = page.crisisDetail.element(by.buttonText(save ? 'Save' : 'Cancel'));
     await buttonEle.click();
     crisisEle = page.crisisList.get(index);
     if (save) {
-      expect(crisisEle.getText()).toContain(crisisText + '-foo');
+      expect(await crisisEle.getText()).toContain(crisisText + '-foo');
     } else {
       await browser.wait(EC.alertIsPresent(), 4000);
       await browser.switchTo().alert().accept();
-      expect(crisisEle.getText()).toContain(crisisText);
+      expect(await crisisEle.getText()).toContain(crisisText);
     }
   }
 

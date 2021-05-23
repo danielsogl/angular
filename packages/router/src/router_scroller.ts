@@ -1,23 +1,24 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {ViewportScroller} from '@angular/common';
-import {OnDestroy} from '@angular/core';
+import {Injectable, OnDestroy} from '@angular/core';
 import {Unsubscribable} from 'rxjs';
 
 import {NavigationEnd, NavigationStart, Scroll} from './events';
 import {Router} from './router';
 
+@Injectable()
 export class RouterScroller implements OnDestroy {
   // TODO(issue/24571): remove '!'.
-  private routerEventsSubscription !: Unsubscribable;
+  private routerEventsSubscription!: Unsubscribable;
   // TODO(issue/24571): remove '!'.
-  private scrollEventsSubscription !: Unsubscribable;
+  private scrollEventsSubscription!: Unsubscribable;
 
   private lastId = 0;
   private lastSource: 'imperative'|'popstate'|'hashchange'|undefined = 'imperative';
@@ -27,9 +28,13 @@ export class RouterScroller implements OnDestroy {
   constructor(
       private router: Router,
       /** @docsNotRequired */ public readonly viewportScroller: ViewportScroller, private options: {
-        scrollPositionRestoration?: 'disabled' | 'enabled' | 'top',
+        scrollPositionRestoration?: 'disabled'|'enabled'|'top',
         anchorScrolling?: 'disabled'|'enabled'
-      } = {}) {}
+      } = {}) {
+    // Default both options to 'disabled'
+    options.scrollPositionRestoration = options.scrollPositionRestoration || 'disabled';
+    options.anchorScrolling = options.anchorScrolling || 'disabled';
+  }
 
   init(): void {
     // we want to disable the automatic scrolling because having two places
@@ -82,6 +87,7 @@ export class RouterScroller implements OnDestroy {
         routerEvent, this.lastSource === 'popstate' ? this.store[this.restoredId] : null, anchor));
   }
 
+  /** @nodoc */
   ngOnDestroy() {
     if (this.routerEventsSubscription) {
       this.routerEventsSubscription.unsubscribe();

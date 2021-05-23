@@ -1,12 +1,11 @@
-import './testing/global-jasmine';
 import 'jasmine-core/lib/jasmine-core/jasmine-html.js';
 import 'jasmine-core/lib/jasmine-core/boot.js';
 
-declare var jasmine;
+declare var jasmine: any;
 
 import './polyfills';
 
-import 'zone.js/dist/zone-testing';
+import 'zone.js/testing';
 
 import { getTestBed } from '@angular/core/testing';
 import {
@@ -23,13 +22,13 @@ bootstrap();
 
 //
 
-function bootstrap () {
-  if (window['jasmineRef']) {
+function bootstrap() {
+  if ((window as any).jasmineRef) {
     location.reload();
     return;
   } else {
-    window.onload(undefined);
-    window['jasmineRef'] = jasmine.getEnv();
+    window.onload?.({} as Event);
+    (window as any).jasmineRef = jasmine.getEnv();
   }
 
   // First, initialize the Angular testing environment.

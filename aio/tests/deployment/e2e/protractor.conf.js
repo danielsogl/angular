@@ -1,20 +1,27 @@
+// @ts-check
 // Protractor configuration file, see link for more information
 // https://github.com/angular/protractor/blob/master/lib/config.ts
 
+/**
+ * @type { import("protractor").Config }
+ */
 exports.config = {
   allScriptsTimeout: 11000,
-  specs: [
-    './*.e2e-spec.ts'
-  ],
+  suites: {
+    full: './*.e2e-spec.ts',
+    smoke: './smoke-tests.e2e-spec.ts',
+  },
+  suite: 'full',
   capabilities: {
     browserName: 'chrome',
-    // For Travis
     chromeOptions: {
-      binary: process.env.CHROME_BIN,
-      args: ['--no-sandbox']
-    }
+      binary: require('puppeteer').executablePath(),
+      // See /integration/README.md#browser-tests for more info on these args
+      args: ['--no-sandbox', '--headless', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio'],
+    },
   },
   directConnect: true,
+  SELENIUM_PROMISE_MANAGER: false,
   framework: 'jasmine',
   jasmineNodeOpts: {
     showColors: true,
@@ -26,11 +33,13 @@ exports.config = {
     legacyUrls: [],
   },
   beforeLaunch() {
+    const {join} = require('path');
     const {register} = require('ts-node');
-    register({});
+
+    register({project: join(__dirname, './tsconfig.json')});
   },
   onPrepare() {
-    const {SpecReporter} = require('jasmine-spec-reporter');
+    const {SpecReporter, StacktraceOption} = require('jasmine-spec-reporter');
     const {browser} = require('protractor');
     const {loadLegacyUrls, loadRemoteSitemapUrls} = require('../shared/helpers');
 
@@ -46,7 +55,11 @@ exports.config = {
       }
 
       Object.assign(config.params, {sitemapUrls, legacyUrls});
-      jasmine.getEnv().addReporter(new SpecReporter({spec: {displayStacktrace: true}}));
+      jasmine.getEnv().addReporter(new SpecReporter({
+        spec: {
+          displayStacktrace: StacktraceOption.PRETTY,
+        },
+      }));
     });
   }
 };

@@ -12,16 +12,15 @@ import { HEROES } from '../mock-heroes';
   styleUrls: ['./heroes.component.css']
 })
 // #enddocregion metadata
+
+// #docregion component
 export class HeroesComponent implements OnInit {
 
-  // #docregion heroes
   heroes = HEROES;
-  // #enddocregion heroes
-
+  // #enddocregion component
   // #docregion on-select
-  selectedHero: Hero;
-
-  // #enddocregion on-select
+  selectedHero?: Hero;
+ // #enddocregion on-select
 
   constructor() { }
 
@@ -33,4 +32,6 @@ export class HeroesComponent implements OnInit {
     this.selectedHero = hero;
   }
   // #enddocregion on-select
+// #docregion component
 }
+// #enddocregion component

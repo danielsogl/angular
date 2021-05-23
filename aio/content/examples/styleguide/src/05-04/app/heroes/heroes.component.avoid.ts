@@ -1,5 +1,5 @@
-import { Component, OnInit } from '@angular/core';
-import { Observable }        from 'rxjs';
+import { Component } from '@angular/core';
+import { Observable } from 'rxjs';
 
 import { Hero, HeroService } from './shared';
 
@@ -23,7 +23,10 @@ import { Hero, HeroService } from './shared';
   `,
   styles: [`
     .heroes {
-      margin: 0 0 2em 0; list-style-type: none; padding: 0; width: 15em;
+      margin: 0 0 2em 0;
+      list-style-type: none;
+      padding: 0;
+      width: 15em;
     }
     .heroes li {
       cursor: pointer;
@@ -51,13 +54,11 @@ import { Hero, HeroService } from './shared';
     }
   `]
 })
-export class HeroesComponent implements OnInit {
+export class HeroesComponent {
   heroes: Observable<Hero[]>;
-  selectedHero: Hero;
+  selectedHero!: Hero;
 
- constructor(private heroService: HeroService) { }
-
-  ngOnInit() {
+  constructor(private heroService: HeroService) {
     this.heroes = this.heroService.getHeroes();
   }
 }

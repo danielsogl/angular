@@ -1,14 +1,14 @@
 /* tslint:disable:one-line*/
 // #docregion
-import { Injectable }    from '@angular/core';
+import { Injectable } from '@angular/core';
 
 import { LoggerService } from './logger.service';
 
 // #docregion date-logger-service
-@Injectable()
-// #docregion date-logger-service-signature
+@Injectable({
+  providedIn: 'root'
+})
 export class DateLoggerService extends LoggerService
-// #enddocregion date-logger-service-signature
 {
   logInfo(msg: any)  { super.logInfo(stamp(msg)); }
   logDebug(msg: any) { super.logInfo(stamp(msg)); }

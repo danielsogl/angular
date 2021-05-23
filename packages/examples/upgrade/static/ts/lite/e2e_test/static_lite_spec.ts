@@ -1,19 +1,20 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ElementArrayFinder, ElementFinder, browser, by, element} from 'protractor';
+import {browser, by, element, ElementArrayFinder, ElementFinder} from 'protractor';
 
-import {verifyNoBrowserErrors} from '../../../../../_common/e2e_util';
+import {verifyNoBrowserErrors} from '../../../../../test-utils';
+
 import {addCustomMatchers} from './e2e_util';
 
 function loadPage() {
   browser.rootEl = 'example-app';
-  browser.get('/upgrade/static/ts/lite/');
+  browser.get('/');
 }
 
 describe('upgrade/static (lite)', () => {

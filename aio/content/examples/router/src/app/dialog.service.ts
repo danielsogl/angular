@@ -7,7 +7,9 @@ import { Observable, of } from 'rxjs';
  * DialogService makes this app easier to test by faking this service.
  * TODO: better modal implementation that doesn't use window.confirm
  */
-@Injectable()
+@Injectable({
+  providedIn: 'root',
+})
 export class DialogService {
   /**
    * Ask user to confirm an action. `message` explains the action and choices.
@@ -17,5 +19,5 @@ export class DialogService {
     const confirmation = window.confirm(message || 'Is it OK?');
 
     return of(confirmation);
-  };
+  }
 }

@@ -22,9 +22,9 @@
 
   .hero-title {
     display: inline-block;
-    font-size: 28px;
+    @include font-size(28);
     font-weight: 400;
-    line-height: 48px;
+    @include line-height(48);
     margin: 0 8px 0 0;
     text-transform: uppercase;
 
@@ -42,7 +42,7 @@ section#intro {
   height: 480px;
   margin: 0 auto -32px;
   padding: 48px 0 0;
-  color: white;
+  color: $white;
 
   @media (max-width: 780px) {
     flex-direction: column;
@@ -76,8 +76,8 @@ section#intro {
   }
 
   .hero-headline {
-    font-size: 40px;
-    line-height: 64px;
+    @include font-size(40);
+    @include line-height(64);
     font-weight: 500;
     margin: 32px 0;
 
@@ -90,14 +90,13 @@ section#intro {
     }
 
     @media (max-width: 575px) {
-      font-size: 32px;
-      line-height: 50px;
+      @include font-size(32);
+      @include line-height(50);
     }
   }
 
   .hero-logo {
     display: flex;
-    width: 400px;
 
     @media (max-width: 780px) {
       justify-content: center;
@@ -107,6 +106,7 @@ section#intro {
       width: 400px;
       height: 400px;
       margin-bottom: 8px;
+      max-width: none;
       padding: 0;
       filter: drop-shadow(0 2px 2px rgba($black, 0.24));
 
@@ -133,7 +133,7 @@ section#intro {
   box-sizing: border-box;
   transition: all 0.3s ease-in;
 
-  @media (max-width: 992px) {
+  @media (max-width: 991px) {
     flex-direction: column;
     text-align: center;
     padding: 32px 16px;
@@ -154,7 +154,7 @@ section#intro {
     align-items: center;
     height: 40px;
     min-width: 160px;
-    font-size: 16px;
+    @include font-size(16);
     color: $white;
     background-color: $blue;
     border-radius: 48px;
@@ -172,11 +172,11 @@ section#intro {
     right: 0;
     position: static;
     transition: all 0.3s ease-in;
-    font-size: 16px;
+    @include font-size(16);
   }
 
   p {
-    font-size: 16px;
+    @include font-size(16);
     margin: 8px;
     text-align: center;
   }
@@ -246,15 +246,10 @@ section#intro {
 }
 
 .button.hero-cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 184px;
-  height: 40px;
-  padding: 0 24px;
-  font-size: 18px;
+  padding: 2px 34px 0;
+  @include font-size(18);
   font-weight: 600;
-  line-height: 40px;
+  @include line-height(40);
   background-color: $white;
   border-radius: 48px;
   box-shadow: 0 2px 5px 0 rgba(0,0,0,.26);
@@ -266,66 +261,39 @@ section#intro {
   }
 }
 
-aio-shell {
-  &.page-resources, &.page-events, &.page-features, &.page-presskit, &.page-contribute {
-    section {
-      padding: 0rem 0rem 3rem;
-    }
+@include marketing-pages {
+  .sidenav-content {
+    padding: 0 0 3rem;
   }
 
-  &.page-home {
-    section {
-      padding: 0;
+  article {
+    padding: 3rem;
+
+    @media (max-width: 800px) {
+      padding: 2.2rem;
     }
   }
+}
 
-  &.page-home, &.page-resources, &.page-events, &.page-contribute {
-    article {
-      padding: 32px;
+.page-home {
+  .sidenav-content {
+    padding-bottom: 0;
+  }
+}
 
-      @media (max-width: 800px) {
-        padding: 24px;
-      }
-    }
+.cta-bar {
+  &.announcement-bar {
+    background: none;
+    box-shadow: none;
   }
 
-  &.page-features {
-    article {
-      padding: 0 3rem;
-    }
-  }
-
-  &.page-home, &.page-resources, &.page-events, &.page-features {
-
-    .content img {
-      @media (max-width: 1300px) {
-        max-width: none;
-      }
-    }
-
-    .feature-section img {
-      max-width: 70px;
-    }
-
-    @media (max-width: 600px) {
-      mat-sidenav-container.sidenav-container {
-        padding-top: 0;
-      }
-    }
-  }
-
-  .cta-bar .hero-cta {
+  .hero-cta {
     color: $blue;
   }
 }
 
-.cta-bar.announcement-bar {
-  background: none;
-  box-shadow: none;
-}
-
 .text-headline {
-  font-size: 20px;
+  @include font-size(20);
   font-weight: 500;
   color: $blue;
   margin-top: 10px;
@@ -391,23 +359,12 @@ div[layout=row]{
   }
 
   .promo-img-container {
-
-    img {
-      max-width: 90% !important;
-    }
-
     p {
       margin: 0 20px;
     }
 
     img {
-      max-width: 90%;
-
-
-      @media (max-width: 599px) {
-        max-width: 100%;
-        float: initial !important;
-      }
+      max-width: 90% !important;
     }
   }
 }
@@ -424,15 +381,15 @@ div[layout=row]{
 
   .banner-headline {
     text-transform: uppercase;
-    font-size: 24px;
+    @include font-size(24);
     font-weight: 300;
-    color: white;
+    color: $white;
     margin: 0;
     -webkit-margin-before: 0;
     -webkit-margin-after: 0;
 
     @media (max-width: 600px) {
-      font-size: 18px;
+      @include font-size(18);
       font-weight: 400;
     }
 
@@ -440,7 +397,8 @@ div[layout=row]{
       display: none;
     }
   }
-}
-.page-features .marketing-banner {
-  margin-bottom: 20px;
+
+  .page-features & {
+    margin-bottom: 20px;
+  }
 }

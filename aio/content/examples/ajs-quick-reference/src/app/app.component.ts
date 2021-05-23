@@ -16,11 +16,11 @@ export class AppComponent {
   eventType = '<not clicked yet>';
   isActive = true;
   isImportant = true;
-  movie: IMovie = null;
+  movie: IMovie;
   movies: IMovie[] = [];
   showImage = true;
   title = 'AngularJS to Angular Quick Ref Cookbook';
-  toggleImage(event: UIEvent) {
+  toggleImage(event?: UIEvent) {
     this.showImage = !this.showImage;
     this.eventType = (event && event.type) || 'not provided';
   }

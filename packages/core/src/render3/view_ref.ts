@@ -1,21 +1,23 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ApplicationRef} from '../application_ref';
 import {ChangeDetectorRef as viewEngine_ChangeDetectorRef} from '../change_detection/change_detector_ref';
-import {ViewContainerRef as viewEngine_ViewContainerRef} from '../linker/view_container_ref';
-import {EmbeddedViewRef as viewEngine_EmbeddedViewRef, InternalViewRef as viewEngine_InternalViewRef} from '../linker/view_ref';
+import {EmbeddedViewRef as viewEngine_EmbeddedViewRef, InternalViewRef as viewEngine_InternalViewRef, ViewRefTracker} from '../linker/view_ref';
+import {removeFromArray} from '../util/array_utils';
+import {assertEqual} from '../util/assert';
+import {collectNativeNodes} from './collect_native_nodes';
+import {checkNoChangesInRootView, checkNoChangesInternal, detectChangesInRootView, detectChangesInternal, markViewDirty, storeCleanupWithContext} from './instructions/shared';
+import {CONTAINER_HEADER_OFFSET, VIEW_REFS} from './interfaces/container';
+import {isLContainer} from './interfaces/type_checks';
+import {CONTEXT, FLAGS, LView, LViewFlags, PARENT, TVIEW} from './interfaces/view';
+import {destroyLView, detachView, renderDetachView} from './node_manipulation';
 
-import {checkNoChanges, detectChanges, markViewDirty, storeCleanupFn, viewAttached} from './instructions';
-import {ComponentTemplate} from './interfaces/definition';
-import {LViewNode} from './interfaces/node';
-import {FLAGS, LViewData, LViewFlags} from './interfaces/view';
-import {destroyLView} from './node_manipulation';
+
 
 // Needed due to tsickle downleveling where multiple `implements` with classes creates
 // multiple @extends in Closure annotations, which is illegal. This workaround fixes
@@ -23,35 +25,78 @@ import {destroyLView} from './node_manipulation';
 export interface viewEngine_ChangeDetectorRef_interface extends viewEngine_ChangeDetectorRef {}
 
 export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_InternalViewRef,
-    viewEngine_ChangeDetectorRef_interface {
-  // TODO(issue/24571): remove '!'.
-  private _appRef !: ApplicationRef | null;
+                                   viewEngine_ChangeDetectorRef_interface {
+  private _appRef: ViewRefTracker|null = null;
+  private _attachedToViewContainer = false;
 
-  context: T;
-  // TODO(issue/24571): remove '!'.
-  rootNodes !: any[];
+  get rootNodes(): any[] {
+    const lView = this._lView;
+    const tView = lView[TVIEW];
+    return collectNativeNodes(tView, lView, tView.firstChild, []);
+  }
 
-  constructor(protected _view: LViewData, context: T|null) { this.context = context !; }
+  constructor(
+      /**
+       * This represents `LView` associated with the component when ViewRef is a ChangeDetectorRef.
+       *
+       * When ViewRef is created for a dynamic component, this also represents the `LView` for the
+       * component.
+       *
+       * For a "regular" ViewRef created for an embedded view, this is the `LView` for the embedded
+       * view.
+       *
+       * @internal
+       */
+      public _lView: LView,
 
-  /** @internal */
-  _setComponentContext(view: LViewData, context: T) {
-    this._view = view;
-    this.context = context;
+      /**
+       * This represents the `LView` associated with the point where `ChangeDetectorRef` was
+       * requested.
+       *
+       * This may be different from `_lView` if the `_cdRefInjectingView` is an embedded view.
+       */
+      private _cdRefInjectingView?: LView) {}
+
+  get context(): T {
+    return this._lView[CONTEXT] as T;
+  }
+
+  set context(value: T) {
+    this._lView[CONTEXT] = value;
   }
 
   get destroyed(): boolean {
-    return (this._view[FLAGS] & LViewFlags.Destroyed) === LViewFlags.Destroyed;
+    return (this._lView[FLAGS] & LViewFlags.Destroyed) === LViewFlags.Destroyed;
   }
 
-  destroy(): void { destroyLView(this._view); }
+  destroy(): void {
+    if (this._appRef) {
+      this._appRef.detachView(this);
+    } else if (this._attachedToViewContainer) {
+      const parent = this._lView[PARENT];
+      if (isLContainer(parent)) {
+        const viewRefs = parent[VIEW_REFS] as ViewRef<unknown>[] | null;
+        const index = viewRefs ? viewRefs.indexOf(this) : -1;
+        if (index > -1) {
+          ngDevMode &&
+              assertEqual(
+                  index, parent.indexOf(this._lView) - CONTAINER_HEADER_OFFSET,
+                  'An attached view should be in the same position within its container as its ViewRef in the VIEW_REFS array.');
+          detachView(parent, index);
+          removeFromArray(viewRefs!, index);
+        }
+      }
+      this._attachedToViewContainer = false;
+    }
+    destroyLView(this._lView[TVIEW], this._lView);
+  }
 
-  onDestroy(callback: Function) { storeCleanupFn(this._view, callback); }
+  onDestroy(callback: Function) {
+    storeCleanupWithContext(this._lView[TVIEW], this._lView, null, callback);
+  }
 
   /**
    * Marks a view and all of its ancestors dirty.
-   *
-   * It also triggers change detection by calling `scheduleTick` internally, which coalesces
-   * multiple `markForCheck` calls to into one change detection run.
    *
    * This can be used to ensure an {@link ChangeDetectionStrategy#OnPush OnPush} component is
    * checked when it needs to be re-rendered but the two normal triggers haven't marked it
@@ -81,7 +126,9 @@ export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_Int
    * }
    * ```
    */
-  markForCheck(): void { markViewDirty(this._view); }
+  markForCheck(): void {
+    markViewDirty(this._cdRefInjectingView || this._lView);
+  }
 
   /**
    * Detaches the view from the change detection tree.
@@ -136,7 +183,9 @@ export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_Int
    * }
    * ```
    */
-  detach(): void { this._view[FLAGS] &= ~LViewFlags.Attached; }
+  detach(): void {
+    this._lView[FLAGS] &= ~LViewFlags.Attached;
+  }
 
   /**
    * Re-attaches a view to the change detection tree.
@@ -194,7 +243,9 @@ export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_Int
    * }
    * ```
    */
-  reattach(): void { this._view[FLAGS] |= LViewFlags.Attached; }
+  reattach(): void {
+    this._lView[FLAGS] |= LViewFlags.Attached;
+  }
 
   /**
    * Checks the view and its children.
@@ -217,7 +268,9 @@ export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_Int
    *
    * See {@link ChangeDetectorRef#detach detach} for more information.
    */
-  detectChanges(): void { detectChanges(this.context); }
+  detectChanges(): void {
+    detectChangesInternal(this._lView[TVIEW], this._lView, this.context);
+  }
 
   /**
    * Checks the change detector and its children, and throws if any changes are detected.
@@ -225,33 +278,45 @@ export class ViewRef<T> implements viewEngine_EmbeddedViewRef<T>, viewEngine_Int
    * This is used in development mode to verify that running change detection doesn't
    * introduce other changes.
    */
-  checkNoChanges(): void { checkNoChanges(this.context); }
+  checkNoChanges(): void {
+    checkNoChangesInternal(this._lView[TVIEW], this._lView, this.context);
+  }
 
-  detachFromAppRef() { this._appRef = null; }
+  attachToViewContainerRef() {
+    if (this._appRef) {
+      throw new Error('This view is already attached directly to the ApplicationRef!');
+    }
+    this._attachedToViewContainer = true;
+  }
 
-  attachToAppRef(appRef: ApplicationRef) { this._appRef = appRef; }
+  detachFromAppRef() {
+    this._appRef = null;
+    renderDetachView(this._lView[TVIEW], this._lView);
+  }
+
+  attachToAppRef(appRef: ViewRefTracker) {
+    if (this._attachedToViewContainer) {
+      throw new Error('This view is already attached to a ViewContainer!');
+    }
+    this._appRef = appRef;
+  }
 }
 
-
-export class EmbeddedViewRef<T> extends ViewRef<T> {
-  /**
-   * @internal
-   */
-  _lViewNode: LViewNode;
-  private _viewContainerRef: viewEngine_ViewContainerRef|null = null;
-
-  constructor(viewNode: LViewNode, template: ComponentTemplate<T>, context: T) {
-    super(viewNode.data, context);
-    this._lViewNode = viewNode;
+/** @internal */
+export class RootViewRef<T> extends ViewRef<T> {
+  constructor(public _view: LView) {
+    super(_view);
   }
 
-  destroy(): void {
-    if (this._viewContainerRef && viewAttached(this._view)) {
-      this._viewContainerRef.detach(this._viewContainerRef.indexOf(this));
-      this._viewContainerRef = null;
-    }
-    super.destroy();
+  detectChanges(): void {
+    detectChangesInRootView(this._view);
   }
 
-  attachToViewContainerRef(vcRef: viewEngine_ViewContainerRef) { this._viewContainerRef = vcRef; }
+  checkNoChanges(): void {
+    checkNoChangesInRootView(this._view);
+  }
+
+  get context(): T {
+    return null!;
+  }
 }

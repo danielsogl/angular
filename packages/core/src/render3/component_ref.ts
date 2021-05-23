@@ -1,35 +1,56 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ChangeDetectorRef} from '../change_detection/change_detector_ref';
+import {ChangeDetectorRef as ViewEngine_ChangeDetectorRef} from '../change_detection/change_detector_ref';
 import {InjectionToken} from '../di/injection_token';
-import {Injector, inject} from '../di/injector';
+import {Injector} from '../di/injector';
+import {InjectFlags} from '../di/interface/injector';
+import {ProviderToken} from '../di/provider_token';
+import {Type} from '../interface/type';
 import {ComponentFactory as viewEngine_ComponentFactory, ComponentRef as viewEngine_ComponentRef} from '../linker/component_factory';
 import {ComponentFactoryResolver as viewEngine_ComponentFactoryResolver} from '../linker/component_factory_resolver';
-import {ElementRef} from '../linker/element_ref';
+import {createElementRef, ElementRef as viewEngine_ElementRef} from '../linker/element_ref';
 import {NgModuleRef as viewEngine_NgModuleRef} from '../linker/ng_module_factory';
 import {RendererFactory2} from '../render/api';
-import {Type} from '../type';
-
-import {assertComponentType, assertDefined} from './assert';
-import {createRootContext} from './component';
-import {baseDirectiveCreate, createLViewData, createTView, enterView, hostElement, initChangeDetectorIfExisting, locateHostElement} from './instructions';
-import {ComponentDefInternal, ComponentType} from './interfaces/definition';
-import {LElementNode} from './interfaces/node';
-import {RElement} from './interfaces/renderer';
-import {INJECTOR, LViewData, LViewFlags, RootContext} from './interfaces/view';
-import {ViewRef} from './view_ref';
+import {Sanitizer} from '../sanitization/sanitizer';
+import {VERSION} from '../version';
+import {NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR} from '../view/provider';
+import {assertComponentType} from './assert';
+import {createRootComponent, createRootComponentView, createRootContext, LifecycleHooksFeature} from './component';
+import {getComponentDef} from './definition';
+import {NodeInjector} from './di';
+import {createLView, createTView, locateHostElement, renderView} from './instructions/shared';
+import {ComponentDef} from './interfaces/definition';
+import {TContainerNode, TElementContainerNode, TElementNode, TNode} from './interfaces/node';
+import {domRendererFactory3, RendererFactory3} from './interfaces/renderer';
+import {RNode} from './interfaces/renderer_dom';
+import {HEADER_OFFSET, LView, LViewFlags, TViewType} from './interfaces/view';
+import {MATH_ML_NAMESPACE, SVG_NAMESPACE} from './namespaces';
+import {createElementNode, writeDirectClass} from './node_manipulation';
+import {extractAttrsAndClassesFromSelector, stringifyCSSSelectorList} from './node_selector_matcher';
+import {enterView, leaveView} from './state';
+import {setUpAttributes} from './util/attrs_utils';
+import {defaultScheduler} from './util/misc_utils';
+import {getTNode} from './util/view_utils';
+import {RootViewRef, ViewRef} from './view_ref';
 
 export class ComponentFactoryResolver extends viewEngine_ComponentFactoryResolver {
+  /**
+   * @param ngModule The NgModuleRef to which all resolved factories are bound.
+   */
+  constructor(private ngModule?: viewEngine_NgModuleRef<any>) {
+    super();
+  }
+
   resolveComponentFactory<T>(component: Type<T>): viewEngine_ComponentFactory<T> {
     ngDevMode && assertComponentType(component);
-    const componentDef = (component as ComponentType<T>).ngComponentDef;
-    return new ComponentFactory(componentDef);
+    const componentDef = getComponentDef(component)!;
+    return new ComponentFactory(componentDef, this.ngModule);
   }
 }
 
@@ -44,19 +65,39 @@ function toRefArray(map: {[key: string]: string}): {propName: string; templateNa
   return array;
 }
 
-/**
- * Default {@link RootContext} for all components rendered with {@link renderComponent}.
- */
-export const ROOT_CONTEXT = new InjectionToken<RootContext>(
-    'ROOT_CONTEXT_TOKEN',
-    {providedIn: 'root', factory: () => createRootContext(inject(SCHEDULER))});
+function getNamespace(elementName: string): string|null {
+  const name = elementName.toLowerCase();
+  return name === 'svg' ? SVG_NAMESPACE : (name === 'math' ? MATH_ML_NAMESPACE : null);
+}
 
 /**
  * A change detection scheduler token for {@link RootContext}. This token is the default value used
  * for the default `RootContext` found in the {@link ROOT_CONTEXT} token.
  */
-export const SCHEDULER = new InjectionToken<((fn: () => void) => void)>(
-    'SCHEDULER_TOKEN', {providedIn: 'root', factory: () => requestAnimationFrame.bind(window)});
+export const SCHEDULER = new InjectionToken<((fn: () => void) => void)>('SCHEDULER_TOKEN', {
+  providedIn: 'root',
+  factory: () => defaultScheduler,
+});
+
+function createChainedInjector(rootViewInjector: Injector, moduleInjector: Injector): Injector {
+  return {
+    get: <T>(token: ProviderToken<T>, notFoundValue?: T, flags?: InjectFlags): T => {
+      const value = rootViewInjector.get(token, NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR as T, flags);
+
+      if (value !== NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR ||
+          notFoundValue === NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR) {
+        // Return the value from the root element injector when
+        // - it provides it
+        //   (value !== NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR)
+        // - the module injector should not be checked
+        //   (notFoundValue === NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR)
+        return value;
+      }
+
+      return moduleInjector.get(token, notFoundValue, flags);
+    }
+  };
+}
 
 /**
  * Render3 implementation of {@link viewEngine_ComponentFactory}.
@@ -65,66 +106,136 @@ export class ComponentFactory<T> extends viewEngine_ComponentFactory<T> {
   selector: string;
   componentType: Type<any>;
   ngContentSelectors: string[];
+  isBoundToModule: boolean;
+
   get inputs(): {propName: string; templateName: string;}[] {
     return toRefArray(this.componentDef.inputs);
   }
+
   get outputs(): {propName: string; templateName: string;}[] {
     return toRefArray(this.componentDef.outputs);
   }
 
-  constructor(private componentDef: ComponentDefInternal<any>) {
+  /**
+   * @param componentDef The component definition.
+   * @param ngModule The NgModuleRef to which the factory is bound.
+   */
+  constructor(
+      private componentDef: ComponentDef<any>, private ngModule?: viewEngine_NgModuleRef<any>) {
     super();
     this.componentType = componentDef.type;
-    this.selector = componentDef.selectors[0][0] as string;
-    this.ngContentSelectors = [];
+    this.selector = stringifyCSSSelectorList(componentDef.selectors);
+    this.ngContentSelectors =
+        componentDef.ngContentSelectors ? componentDef.ngContentSelectors : [];
+    this.isBoundToModule = !!ngModule;
   }
 
   create(
-      parentComponentInjector: Injector, projectableNodes?: any[][]|undefined,
-      rootSelectorOrNode?: any,
+      injector: Injector, projectableNodes?: any[][]|undefined, rootSelectorOrNode?: any,
       ngModule?: viewEngine_NgModuleRef<any>|undefined): viewEngine_ComponentRef<T> {
-    ngDevMode && assertDefined(ngModule, 'ngModule should always be defined');
+    ngModule = ngModule || this.ngModule;
 
-    const rendererFactory = ngModule ? ngModule.injector.get(RendererFactory2) : document;
-    const hostNode = locateHostElement(rendererFactory, rootSelectorOrNode);
+    const rootViewInjector =
+        ngModule ? createChainedInjector(injector, ngModule.injector) : injector;
 
-    // The first index of the first selector is the tag name.
-    const componentTag = this.componentDef.selectors ![0] ![0] as string;
+    const rendererFactory =
+        rootViewInjector.get(RendererFactory2, domRendererFactory3) as RendererFactory3;
+    const sanitizer = rootViewInjector.get(Sanitizer, null);
 
-    const rootContext: RootContext = ngModule !.injector.get(ROOT_CONTEXT);
+    const hostRenderer = rendererFactory.createRenderer(null, this.componentDef);
+    // Determine a tag name used for creating host elements when this component is created
+    // dynamically. Default to 'div' if this component did not specify any tag name in its selector.
+    const elementName = this.componentDef.selectors[0][0] as string || 'div';
+    const hostRNode = rootSelectorOrNode ?
+        locateHostElement(hostRenderer, rootSelectorOrNode, this.componentDef.encapsulation) :
+        createElementNode(
+            rendererFactory.createRenderer(null, this.componentDef), elementName,
+            getNamespace(elementName));
+
+    const rootFlags = this.componentDef.onPush ? LViewFlags.Dirty | LViewFlags.IsRoot :
+                                                 LViewFlags.CheckAlways | LViewFlags.IsRoot;
+    const rootContext = createRootContext();
 
     // Create the root view. Uses empty TView and ContentTemplate.
-    const rootView: LViewData = createLViewData(
-        rendererFactory.createRenderer(hostNode, this.componentDef.rendererType),
-        createTView(-1, null, null, null, null), null,
-        this.componentDef.onPush ? LViewFlags.Dirty : LViewFlags.CheckAlways);
-    rootView[INJECTOR] = ngModule && ngModule.injector || null;
+    const rootTView = createTView(TViewType.Root, null, null, 1, 0, null, null, null, null, null);
+    const rootLView = createLView(
+        null, rootTView, rootContext, rootFlags, null, null, rendererFactory, hostRenderer,
+        sanitizer, rootViewInjector);
 
     // rootView is the parent when bootstrapping
-    const oldView = enterView(rootView, null !);
+    // TODO(misko): it looks like we are entering view here but we don't really need to as
+    // `renderView` does that. However as the code is written it is needed because
+    // `createRootComponentView` and `createRootComponent` both read global state. Fixing those
+    // issues would allow us to drop this.
+    enterView(rootLView);
 
     let component: T;
-    let elementNode: LElementNode;
+    let tElementNode: TElementNode;
+
     try {
-      if (rendererFactory.begin) rendererFactory.begin();
+      const componentView = createRootComponentView(
+          hostRNode, this.componentDef, rootLView, rendererFactory, hostRenderer);
+      if (hostRNode) {
+        if (rootSelectorOrNode) {
+          setUpAttributes(hostRenderer, hostRNode, ['ng-version', VERSION.full]);
+        } else {
+          // If host element is created as a part of this function call (i.e. `rootSelectorOrNode`
+          // is not defined), also apply attributes and classes extracted from component selector.
+          // Extract attributes and classes from the first selector only to match VE behavior.
+          const {attrs, classes} =
+              extractAttrsAndClassesFromSelector(this.componentDef.selectors[0]);
+          if (attrs) {
+            setUpAttributes(hostRenderer, hostRNode, attrs);
+          }
+          if (classes && classes.length > 0) {
+            writeDirectClass(hostRenderer, hostRNode, classes.join(' '));
+          }
+        }
+      }
 
-      // Create element node at index 0 in data array
-      elementNode = hostElement(componentTag, hostNode, this.componentDef);
+      tElementNode = getTNode(rootTView, HEADER_OFFSET) as TElementNode;
 
-      // Create directive instance with factory() and store at index 0 in directives array
-      rootContext.components.push(
-          component = baseDirectiveCreate(0, this.componentDef.factory(), this.componentDef) as T);
-      initChangeDetectorIfExisting(elementNode.nodeInjector, component, elementNode.data !);
+      if (projectableNodes !== undefined) {
+        const projection: (TNode|RNode[]|null)[] = tElementNode.projection = [];
+        for (let i = 0; i < this.ngContentSelectors.length; i++) {
+          const nodesforSlot = projectableNodes[i];
+          // Projectable nodes can be passed as array of arrays or an array of iterables (ngUpgrade
+          // case). Here we do normalize passed data structure to be an array of arrays to avoid
+          // complex checks down the line.
+          // We also normalize the length of the passed in projectable nodes (to match the number of
+          // <ng-container> slots defined by a component).
+          projection.push(nodesforSlot != null ? Array.from(nodesforSlot) : null);
+        }
+      }
 
+      // TODO: should LifecycleHooksFeature and other host features be generated by the compiler and
+      // executed here?
+      // Angular 5 reference: https://stackblitz.com/edit/lifecycle-hooks-vcref
+      component = createRootComponent(
+          componentView, this.componentDef, rootLView, rootContext, [LifecycleHooksFeature]);
+
+      renderView(rootTView, rootLView, null);
     } finally {
-      enterView(oldView, null);
-      if (rendererFactory.end) rendererFactory.end();
+      leaveView();
     }
 
-    // TODO(misko): this is the wrong injector here.
     return new ComponentRef(
-        this.componentType, component, rootView, ngModule !.injector, hostNode !);
+        this.componentType, component, createElementRef(tElementNode, rootLView), rootLView,
+        tElementNode);
   }
+}
+
+const componentFactoryResolver: ComponentFactoryResolver = new ComponentFactoryResolver();
+
+/**
+ * Creates a ComponentFactoryResolver and stores it on the injector. Or, if the
+ * ComponentFactoryResolver
+ * already exists, retrieves the existing ComponentFactoryResolver.
+ *
+ * @returns The ComponentFactoryResolver instance to use
+ */
+export function injectComponentFactoryResolver(): viewEngine_ComponentFactoryResolver {
+  return componentFactoryResolver;
 }
 
 /**
@@ -136,41 +247,30 @@ export class ComponentFactory<T> extends viewEngine_ComponentFactory<T> {
  *
  */
 export class ComponentRef<T> extends viewEngine_ComponentRef<T> {
-  destroyCbs: (() => void)[]|null = [];
-  location: ElementRef<any>;
-  injector: Injector;
   instance: T;
   hostView: ViewRef<T>;
-  changeDetectorRef: ChangeDetectorRef;
+  changeDetectorRef: ViewEngine_ChangeDetectorRef;
   componentType: Type<T>;
 
   constructor(
-      componentType: Type<T>, instance: T, rootView: LViewData, injector: Injector,
-      hostNode: RElement) {
+      componentType: Type<T>, instance: T, public location: viewEngine_ElementRef,
+      private _rootLView: LView,
+      private _tNode: TElementNode|TContainerNode|TElementContainerNode) {
     super();
     this.instance = instance;
-    /* TODO(jasonaden): This is incomplete, to be adjusted in follow-up PR. Notes from Kara:When
-     * ViewRef.detectChanges is called from ApplicationRef.tick, it will call detectChanges at the
-     * component instance level. I suspect this means that lifecycle hooks and host bindings on the
-     * given component won't work (as these are always called at the level above a component).
-     *
-     * In render2, ViewRef.detectChanges uses the root view instance for view checks, not the
-     * component instance. So passing in the root view (1 level above the component) is sufficient.
-     * We might  want to think about creating a fake component for the top level? Or overwrite
-     * detectChanges with a function that calls tickRootContext? */
-    this.hostView = this.changeDetectorRef = new ViewRef(rootView, instance);
-    this.injector = injector;
-    this.location = new ElementRef(hostNode);
+    this.hostView = this.changeDetectorRef = new RootViewRef<T>(_rootLView);
     this.componentType = componentType;
   }
 
-  destroy(): void {
-    ngDevMode && assertDefined(this.destroyCbs, 'NgModule already destroyed');
-    this.destroyCbs !.forEach(fn => fn());
-    this.destroyCbs = null;
+  get injector(): Injector {
+    return new NodeInjector(this._tNode, this._rootLView);
   }
+
+  destroy(): void {
+    this.hostView.destroy();
+  }
+
   onDestroy(callback: () => void): void {
-    ngDevMode && assertDefined(this.destroyCbs, 'NgModule already destroyed');
-    this.destroyCbs !.push(callback);
+    this.hostView.onDestroy(callback);
   }
 }

@@ -1,21 +1,34 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {NgModuleResolver} from '@angular/compiler/src/ng_module_resolver';
-import {ɵstringify as stringify} from '@angular/core';
-import {NgModule} from '@angular/core/src/metadata';
+import {Component, Directive, Injectable, NgModule, ɵstringify as stringify} from '@angular/core';
 import {JitReflector} from '@angular/platform-browser-dynamic/src/compiler_reflector';
 
-class SomeClass1 {}
-class SomeClass2 {}
-class SomeClass3 {}
-class SomeClass4 {}
-class SomeClass5 {}
+@Directive()
+class SomeClass1 {
+}
+
+@NgModule()
+class SomeClass2 {
+}
+
+@NgModule()
+class SomeClass3 {
+}
+
+@Injectable()
+class SomeClass4 {
+}
+
+@Component({template: ''})
+class SomeClass5 {
+}
 
 @NgModule({
   declarations: [SomeClass1],
@@ -33,7 +46,9 @@ class SimpleClass {}
   describe('NgModuleResolver', () => {
     let resolver: NgModuleResolver;
 
-    beforeEach(() => { resolver = new NgModuleResolver(new JitReflector()); });
+    beforeEach(() => {
+      resolver = new NgModuleResolver(new JitReflector());
+    });
 
     it('should read out the metadata from the class', () => {
       const moduleMetadata = resolver.resolve(SomeModule);
@@ -66,6 +81,5 @@ class SimpleClass {}
 
       expect(resolver.resolve(ChildWithDecorator)).toEqual(new NgModule({id: 'c'}));
     });
-
   });
 }

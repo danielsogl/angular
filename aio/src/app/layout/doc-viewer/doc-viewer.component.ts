@@ -1,8 +1,8 @@
 import { Component, ElementRef, EventEmitter, Input, OnDestroy, Output } from '@angular/core';
 import { Title, Meta } from '@angular/platform-browser';
 
-import { Observable, of, timer } from 'rxjs';
-import { catchError, switchMap, takeUntil, tap } from 'rxjs/operators';
+import { asapScheduler, Observable, of, timer } from 'rxjs';
+import { catchError, observeOn, switchMap, takeUntil, tap } from 'rxjs/operators';
 
 import { DocumentContents, FILE_NOT_FOUND_ID, FETCHING_ERROR_ID } from 'app/documents/document.service';
 import { Logger } from 'app/shared/logger.service';
@@ -21,7 +21,7 @@ const initialDocViewerContent = initialDocViewerElement ? initialDocViewerElemen
   selector: 'aio-doc-viewer',
   template: ''
   // TODO(robwormald): shadow DOM and emulated don't work here (?!)
-  // encapsulation: ViewEncapsulation.Native
+  // encapsulation: ViewEncapsulation.ShadowDom
 })
 export class DocViewerComponent implements OnDestroy {
   // Enable/Disable view transition animations.
@@ -78,6 +78,7 @@ export class DocViewerComponent implements OnDestroy {
 
     this.docContents$
         .pipe(
+            observeOn(asapScheduler),
             switchMap(newDoc => this.render(newDoc)),
             takeUntil(this.onDestroy$),
         )
@@ -97,12 +98,13 @@ export class DocViewerComponent implements OnDestroy {
     const needsToc = !!titleEl && !/no-?toc/i.test(titleEl.className);
     const embeddedToc = targetElem.querySelector('aio-toc.embedded');
 
-    if (needsToc && !embeddedToc) {
+    if (titleEl && needsToc && !embeddedToc) {
       // Add an embedded ToC if it's needed and there isn't one in the content already.
-      titleEl!.insertAdjacentHTML('afterend', '<aio-toc class="embedded"></aio-toc>');
-    } else if (!needsToc && embeddedToc) {
+      titleEl.insertAdjacentHTML('afterend', '<aio-toc class="embedded"></aio-toc>');
+    } else if (!needsToc && embeddedToc && embeddedToc.parentNode !== null) {
       // Remove the embedded Toc if it's there and not needed.
-      embeddedToc.remove();
+      // We cannot use ChildNode.remove() because of IE11
+      embeddedToc.parentNode.removeChild(embeddedToc);
     }
 
     return () => {
@@ -141,10 +143,18 @@ export class DocViewerComponent implements OnDestroy {
         switchMap(() => this.swapViews(addTitleAndToc)),
         tap(() => this.docRendered.emit()),
         catchError(err => {
-          const errorMessage = (err instanceof Error) ? err.stack : err;
+          const errorMessage = `${(err instanceof Error) ? err.stack : err}`;
           this.logger.error(new Error(`[DocViewer] Error preparing document '${doc.id}': ${errorMessage}`));
           this.nextViewContainer.innerHTML = '';
           this.setNoIndex(true);
+
+          // TODO(gkalpak): Remove this once gathering debug info is no longer needed.
+          if (/loading chunk \d+ failed/i.test(errorMessage)) {
+            // Print some info to help with debugging.
+            // (There is no reason to wait for this async call to complete before continuing.)
+            printSwDebugInfo();
+          }
+
           return this.void$;
         }),
     );
@@ -187,14 +197,16 @@ export class DocViewerComponent implements OnDestroy {
       const seconds = Number(cssValue.replace(/s$/, ''));
       return 1000 * seconds;
     };
+
+    // Some properties are not assignable and thus cannot be animated.
+    // Example methods, readonly and CSS properties:
+    // "length", "parentRule", "getPropertyPriority", "getPropertyValue", "item", "removeProperty", "setProperty"
+    type StringValueCSSStyleDeclaration
+      = Exclude<{ [K in keyof CSSStyleDeclaration]: CSSStyleDeclaration[K] extends string ? K : never }[keyof CSSStyleDeclaration], number>;
     const animateProp =
-        (elem: HTMLElement, prop: keyof CSSStyleDeclaration, from: string, to: string, duration = 200) => {
+        (elem: HTMLElement, prop: StringValueCSSStyleDeclaration, from: string, to: string, duration = 200) => {
           const animationsDisabled = !DocViewerComponent.animationsEnabled
                                      || this.hostElement.classList.contains(NO_ANIMATIONS);
-          if (prop === 'length' || prop === 'parentRule') {
-            // We cannot animate length or parentRule properties because they are readonly
-            return this.void$;
-          }
           elem.style.transition = '';
           return animationsDisabled
               ? this.void$.pipe(tap(() => elem.style[prop] = to))
@@ -205,7 +217,7 @@ export class DocViewerComponent implements OnDestroy {
                     // setting each style.
                     switchMap(() => raf$), tap(() => elem.style[prop] = from),
                     switchMap(() => raf$), tap(() => elem.style.transition = `all ${duration}ms ease-in-out`),
-                    switchMap(() => raf$), tap(() => (elem.style as any)[prop] = to),
+                    switchMap(() => raf$), tap(() => elem.style[prop] = to),
                     switchMap(() => timer(getActualDuration(elem))), switchMap(() => this.void$),
                 );
         };
@@ -219,7 +231,7 @@ export class DocViewerComponent implements OnDestroy {
       done$ = done$.pipe(
           // Remove the current view from the viewer.
           switchMap(() => animateLeave(this.currViewContainer)),
-          tap(() => this.currViewContainer.parentElement!.removeChild(this.currViewContainer)),
+          tap(() => (this.currViewContainer.parentElement as HTMLElement).removeChild(this.currViewContainer)),
           tap(() => this.docRemoved.emit()),
       );
     }
@@ -238,5 +250,65 @@ export class DocViewerComponent implements OnDestroy {
           this.nextViewContainer.innerHTML = '';  // Empty to release memory.
         }),
     );
+  }
+}
+
+// Helpers
+/**
+ * Print some info regarding the ServiceWorker and the caches contents to help debugging potential
+ * issues with failing to find resources in the cache.
+ * (See https://github.com/angular/angular/issues/28114.)
+ */
+async function printSwDebugInfo(): Promise<void> {
+  console.log(`\nServiceWorker: ${navigator.serviceWorker?.controller?.state ?? 'N/A'}`);
+
+  if (typeof caches === 'undefined') {
+    console.log('\nCaches: N/A');
+  } else {
+    const allCacheNames = await caches.keys();
+    const swCacheNames = allCacheNames.filter(name => name.startsWith('ngsw:/:'));
+
+    await findCachesAndPrintEntries(swCacheNames, 'db:control', true, ['manifests']);
+    await findCachesAndPrintEntries(swCacheNames, 'assets:app-shell:cache', false);
+    await findCachesAndPrintEntries(swCacheNames, 'assets:app-shell:meta', true);
+  }
+
+  console.warn(
+      '\nIf you see this error, please report an issue at ' +
+      'https://github.com/angular/angular/issues/new?template=3-docs-bug.md including the above logs.');
+
+  // Internal helpers
+  async function findCachesAndPrintEntries(
+      swCacheNames: string[], nameSuffix: string, includeValues: boolean,
+      ignoredKeys: string[] = []): Promise<void> {
+    const cacheNames = swCacheNames.filter(name => name.endsWith(nameSuffix));
+
+    for (const cacheName of cacheNames) {
+      const cacheEntries = await getCacheEntries(cacheName, includeValues, ignoredKeys);
+      await printCacheEntries(cacheName, cacheEntries);
+    }
+  }
+
+  async function getCacheEntries(
+      name: string, includeValues: boolean,
+      ignoredKeys: string[] = []): Promise<{key: string, value?: object}[]> {
+    const ignoredUrls = new Set(ignoredKeys.map(key => new Request(key).url));
+
+    const cache = await caches.open(name);
+    const keys = (await cache.keys()).map(req => req.url).filter(url => !ignoredUrls.has(url));
+    const entries = await Promise.all(keys.map(async key => ({
+      key,
+      value: !includeValues ? undefined : await (await cache.match(key))?.json(),
+    })));
+
+    return entries;
+  }
+
+  function printCacheEntries(name: string, entries: {key: string, value?: object}[]): void {
+    const entriesStr = entries
+        .map(({key, value}) => `  - ${key}${!value ? '' : `: ${JSON.stringify(value)}`}`)
+        .join('\n');
+
+    console.log(`\nCache: ${name} (${entries.length} entries)\n${entriesStr}`);
   }
 }

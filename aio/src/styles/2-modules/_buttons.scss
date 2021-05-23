@@ -1,11 +1,18 @@
 /* Button Styles */
 
-.button,
-a.button.mat-button {
+button {
+  font-family: inherit;
+}
+
+// This rule overrides some Angular Material styles defined for `.mat-button`
+// (hence we include `.mat-button` in the selector).
+a.button.mat-button,
+.button {
+  color: inherit;
   display: inline-block;
-  line-height: 32px;
+  @include line-height(32);
   padding: 0px 16px;
-  font-size: 14px;
+  @include font-size(14);
   font-weight: 400;
   border-radius: 3px;
   text-decoration: none;
@@ -15,20 +22,20 @@ a.button.mat-button {
 
   // SIZES
   &.button-small {
-    font-size: 12px;
-    line-height: 24px;
+    @include font-size(12);
+    @include line-height(24);
     padding: 0px 8px;
   }
 
   &.button-large {
-    font-size: 15px;
-    line-height: 48px;
+    @include font-size(15);
+    @include line-height(48);
     padding: 0px 24px;
   }
 
   &.button-x-large {
-    font-size: 16px;
-    line-height: 56px;
+    @include font-size(16);
+    @include line-height(56);
     padding: 0px 24px;
   }
 
@@ -48,31 +55,24 @@ a.button.mat-button {
   &.button-subtle {
     background: $mediumgray;
     color: darken($offwhite, 10%);
+
+    &:hover {
+      color: rgba($white, 0.7);
+    }
   }
 
-  &.button-navy {
+  &.button-blue {
     background: $blue;
     color: rgba($white, .87);
+
+    &:hover {
+      color: rgba($white, 0.7);
+    }
   }
 
   &.button-banner {
     background: $darkgray;
     color: rgba($white, .87);
-  }
-
-  &.button-shield,
-  &.button-shield.mat-button {
-    background-color: $blue;
-    background: $blue url('assets/images/logos/angular/angular_whiteTransparent.svg') 24px 13px no-repeat;
-    color: rgba($white, .87);
-    padding-left: 54px;
-    background-size: 22px 22px;
-
-    @media only screen and (-webkit-min-device-pixel-ratio: 2), only screen and (min-device-pixel-ratio: 2) {
-      background: $blue url('assets/images/logos/angular/angular_whiteTransparent.svg') 24px 13px no-repeat;
-      background-size: 22px 22px;
-
-    }
   }
 }
 
@@ -90,18 +90,31 @@ a.button.mat-button {
   }
 }
 
-a.filter-button {
-  width: 140px;
-  font-size: 14px;
-  padding: 0px 16px;
-  margin: 8px;
-  line-height: 48px;
-  border: 2px solid $blue;
-  border-radius: 4px;
 
-  &:hover {
-    background-color: $blue;
-    color: white;
+.group-buttons {
+  margin: 16px auto 32px;
+
+  // This rule overrides some Angular Material styles defined for `.mat-button`
+  // (hence we include `.mat-button` in the selector).
+  a.button.mat-button.filter-button {
+    background-color: rgba($blue, 0.2);
+    border-radius: 4px;
+    @include font-size(16);
+    @include line-height(48);
+    margin: 8px;
+    padding: 0px 16px;
+    width: 168px;
+
+    &.selected,
+    &:hover {
+      background-color: $blue;
+      color: $white;
+    }
+
+    @media (max-width: 480px) {
+      @include font-size(14);
+      width: auto;
+    }
   }
 }
 

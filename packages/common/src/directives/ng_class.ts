@@ -1,12 +1,13 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-
 import {Directive, DoCheck, ElementRef, Input, IterableChanges, IterableDiffer, IterableDiffers, KeyValueChanges, KeyValueDiffer, KeyValueDiffers, Renderer2, ɵisListLikeIterable as isListLikeIterable, ɵstringify as stringify} from '@angular/core';
+
+type NgClassSupportedTypes = string[]|Set<string>|{[klass: string]: any}|null|undefined;
 
 /**
  * @ngModule CommonModule
@@ -34,39 +35,37 @@ import {Directive, DoCheck, ElementRef, Input, IterableChanges, IterableDiffer, 
  * - `Object` - keys are CSS classes that get added when the expression given in the value
  *              evaluates to a truthy value, otherwise they are removed.
  *
- *
+ * @publicApi
  */
 @Directive({selector: '[ngClass]'})
 export class NgClass implements DoCheck {
-  // TODO(issue/24571): remove '!'.
-  private _iterableDiffer !: IterableDiffer<string>| null;
-  // TODO(issue/24571): remove '!'.
-  private _keyValueDiffer !: KeyValueDiffer<string, any>| null;
+  private _iterableDiffer: IterableDiffer<string>|null = null;
+  private _keyValueDiffer: KeyValueDiffer<string, any>|null = null;
   private _initialClasses: string[] = [];
-  // TODO(issue/24571): remove '!'.
-  private _rawClass !: string[] | Set<string>| {[klass: string]: any};
+  private _rawClass: NgClassSupportedTypes = null;
 
   constructor(
       private _iterableDiffers: IterableDiffers, private _keyValueDiffers: KeyValueDiffers,
       private _ngEl: ElementRef, private _renderer: Renderer2) {}
 
+
   @Input('class')
-  set klass(v: string) {
+  set klass(value: string) {
     this._removeClasses(this._initialClasses);
-    this._initialClasses = typeof v === 'string' ? v.split(/\s+/) : [];
+    this._initialClasses = typeof value === 'string' ? value.split(/\s+/) : [];
     this._applyClasses(this._initialClasses);
     this._applyClasses(this._rawClass);
   }
 
-  @Input()
-  set ngClass(v: string|string[]|Set<string>|{[klass: string]: any}) {
+  @Input('ngClass')
+  set ngClass(value: string|string[]|Set<string>|{[klass: string]: any}) {
     this._removeClasses(this._rawClass);
     this._applyClasses(this._initialClasses);
 
     this._iterableDiffer = null;
     this._keyValueDiffer = null;
 
-    this._rawClass = typeof v === 'string' ? v.split(/\s+/) : v;
+    this._rawClass = typeof value === 'string' ? value.split(/\s+/) : value;
 
     if (this._rawClass) {
       if (isListLikeIterable(this._rawClass)) {
@@ -77,14 +76,14 @@ export class NgClass implements DoCheck {
     }
   }
 
-  ngDoCheck(): void {
+  ngDoCheck() {
     if (this._iterableDiffer) {
       const iterableChanges = this._iterableDiffer.diff(this._rawClass as string[]);
       if (iterableChanges) {
         this._applyIterableChanges(iterableChanges);
       }
     } else if (this._keyValueDiffer) {
-      const keyValueChanges = this._keyValueDiffer.diff(this._rawClass as{[k: string]: any});
+      const keyValueChanges = this._keyValueDiffer.diff(this._rawClass as {[k: string]: any});
       if (keyValueChanges) {
         this._applyKeyValueChanges(keyValueChanges);
       }
@@ -106,8 +105,8 @@ export class NgClass implements DoCheck {
       if (typeof record.item === 'string') {
         this._toggleClass(record.item, true);
       } else {
-        throw new Error(
-            `NgClass can only toggle CSS classes expressed as strings, got ${stringify(record.item)}`);
+        throw new Error(`NgClass can only toggle CSS classes expressed as strings, got ${
+            stringify(record.item)}`);
       }
     });
 
@@ -122,7 +121,7 @@ export class NgClass implements DoCheck {
    * For argument of type Map CSS class name in the map's key is toggled based on the value (added
    * for truthy and removed for falsy).
    */
-  private _applyClasses(rawClassVal: string[]|Set<string>|{[klass: string]: any}) {
+  private _applyClasses(rawClassVal: NgClassSupportedTypes) {
     if (rawClassVal) {
       if (Array.isArray(rawClassVal) || rawClassVal instanceof Set) {
         (<any>rawClassVal).forEach((klass: string) => this._toggleClass(klass, true));
@@ -136,7 +135,7 @@ export class NgClass implements DoCheck {
    * Removes a collection of CSS classes from the DOM element. This is mostly useful for cleanup
    * purposes.
    */
-  private _removeClasses(rawClassVal: string[]|Set<string>|{[klass: string]: any}) {
+  private _removeClasses(rawClassVal: NgClassSupportedTypes) {
     if (rawClassVal) {
       if (Array.isArray(rawClassVal) || rawClassVal instanceof Set) {
         (<any>rawClassVal).forEach((klass: string) => this._toggleClass(klass, false));

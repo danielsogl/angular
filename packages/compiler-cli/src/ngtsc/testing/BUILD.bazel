@@ -1,15 +1,19 @@
-package(default_visibility = ["//visibility:public"])
-
 load("//tools:defaults.bzl", "ts_library")
-load("@build_bazel_rules_nodejs//:defs.bzl", "jasmine_node_test")
+
+package(default_visibility = ["//visibility:public"])
 
 ts_library(
     name = "testing",
-    testonly = 1,
+    testonly = True,
     srcs = glob([
         "**/*.ts",
     ]),
+    module_name = "@angular/compiler-cli/src/ngtsc/testing",
     deps = [
         "//packages:types",
+        "//packages/compiler-cli/src/ngtsc/file_system",
+        "//packages/compiler-cli/src/ngtsc/file_system/testing",
+        "//packages/compiler-cli/src/ngtsc/reflection",
+        "@npm//typescript",
     ],
 )

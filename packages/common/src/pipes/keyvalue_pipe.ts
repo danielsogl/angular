@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -15,6 +15,8 @@ function makeKeyValuePair<K, V>(key: K, value: V): KeyValue<K, V> {
 /**
  * A key value pair.
  * Usually used to represent the key value pairs from a Map or Object.
+ *
+ * @publicApi
  */
 export interface KeyValue<K, V> {
   key: K;
@@ -31,35 +33,52 @@ export interface KeyValue<K, V> {
  * By default the comparator will be by Unicode point value.
  * You can optionally pass a compareFn if your keys are complex types.
  *
- * ## Examples
+ * @usageNotes
+ * ### Examples
  *
- * This examples show how an Object or a Map and be iterated by ngFor with the use of this keyvalue
- * pipe.
+ * This examples show how an Object or a Map can be iterated by ngFor with the use of this
+ * keyvalue pipe.
  *
  * {@example common/pipes/ts/keyvalue_pipe.ts region='KeyValuePipe'}
+ *
+ * @publicApi
  */
 @Pipe({name: 'keyvalue', pure: false})
 export class KeyValuePipe implements PipeTransform {
   constructor(private readonly differs: KeyValueDiffers) {}
 
-  // TODO(issue/24571): remove '!'.
-  private differ !: KeyValueDiffer<any, any>;
-  // TODO(issue/24571): remove '!'.
-  private keyValues !: Array<KeyValue<any, any>>;
+  private differ!: KeyValueDiffer<any, any>;
+  private keyValues: Array<KeyValue<any, any>> = [];
 
-  transform<K, V>(input: null, compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): null;
-  transform<V>(
-      input: {[key: string]: V}|Map<string, V>,
-      compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number):
-      Array<KeyValue<string, V>>;
-  transform<V>(
-      input: {[key: number]: V}|Map<number, V>,
-      compareFn?: (a: KeyValue<number, V>, b: KeyValue<number, V>) => number):
-      Array<KeyValue<number, V>>;
-  transform<K, V>(input: Map<K, V>, compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number):
-      Array<KeyValue<K, V>>;
+  /*
+   * NOTE: when the `input` value is a simple Record<K, V> object, the keys are extracted with
+   * Object.keys(). This means that even if the `input` type is Record<number, V> the keys are
+   * compared/returned as `string`s.
+   */
   transform<K, V>(
-      input: null|{[key: string]: V, [key: number]: V}|Map<K, V>,
+      input: ReadonlyMap<K, V>,
+      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>;
+  transform<K extends number, V>(
+      input: Record<K, V>, compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number):
+      Array<KeyValue<string, V>>;
+  transform<K extends string, V>(
+      input: Record<K, V>|ReadonlyMap<K, V>,
+      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>;
+  transform(
+      input: null|undefined,
+      compareFn?: (a: KeyValue<unknown, unknown>, b: KeyValue<unknown, unknown>) => number): null;
+  transform<K, V>(
+      input: ReadonlyMap<K, V>|null|undefined,
+      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>|null;
+  transform<K extends number, V>(
+      input: Record<K, V>|null|undefined,
+      compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number):
+      Array<KeyValue<string, V>>|null;
+  transform<K extends string, V>(
+      input: Record<K, V>|ReadonlyMap<K, V>|null|undefined,
+      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>|null;
+  transform<K, V>(
+      input: undefined|null|{[key: string]: V, [key: number]: V}|ReadonlyMap<K, V>,
       compareFn: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number = defaultComparator):
       Array<KeyValue<K, V>>|null {
     if (!input || (!(input instanceof Map) && typeof input !== 'object')) {
@@ -76,7 +95,7 @@ export class KeyValuePipe implements PipeTransform {
     if (differChanges) {
       this.keyValues = [];
       differChanges.forEachItem((r: KeyValueChangeRecord<K, V>) => {
-        this.keyValues.push(makeKeyValuePair(r.key, r.currentValue !));
+        this.keyValues.push(makeKeyValuePair(r.key, r.currentValue!));
       });
       this.keyValues.sort(compareFn);
     }

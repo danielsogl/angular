@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -15,6 +15,24 @@ import {Scroll} from '../src/events';
 import {RouterScroller} from '../src/router_scroller';
 
 describe('RouterScroller', () => {
+  it('defaults to disabled', () => {
+    const events = new Subject<RouterEvent>();
+    const router = <any>{
+      events,
+      parseUrl: (url: any) => new DefaultUrlSerializer().parse(url),
+      triggerEvent: (e: any) => events.next(e)
+    };
+
+    const viewportScroller = jasmine.createSpyObj(
+        'viewportScroller',
+        ['getScrollPosition', 'scrollToPosition', 'scrollToAnchor', 'setHistoryScrollRestoration']);
+    setScroll(viewportScroller, 0, 0);
+    const scroller = new RouterScroller(router, router);
+
+    expect((scroller as any).options.scrollPositionRestoration).toBe('disabled');
+    expect((scroller as any).options.anchorScrolling).toBe('disabled');
+  });
+
   describe('scroll to top', () => {
     it('should scroll to the top', () => {
       const {events, viewportScroller} =
@@ -110,7 +128,9 @@ describe('RouterScroller', () => {
                      }, 1000);
                      return r;
                    }))
-             .subscribe((e: Scroll) => { viewportScroller.scrollToPosition(e.position); });
+             .subscribe((e: Scroll) => {
+               viewportScroller.scrollToPosition(e.position);
+             });
 
          events.next(new NavigationStart(1, '/a'));
          events.next(new NavigationEnd(1, '/a', '/a'));
@@ -140,8 +160,8 @@ describe('RouterScroller', () => {
 
 
   function createRouterScroller({scrollPositionRestoration, anchorScrolling}: {
-    scrollPositionRestoration: 'disabled' | 'enabled' | 'top',
-    anchorScrolling: 'disabled' | 'enabled'
+    scrollPositionRestoration: 'disabled'|'enabled'|'top',
+    anchorScrolling: 'disabled'|'enabled'
   }) {
     const events = new Subject<RouterEvent>();
     const router = <any>{

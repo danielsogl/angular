@@ -1,13 +1,14 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Type} from '../type';
-import {stringify} from '../util';
+import {Type} from '../interface/type';
+import {getClosureSafeProperty} from '../util/property';
+import {stringify} from '../util/stringify';
 
 
 
@@ -18,9 +19,13 @@ import {stringify} from '../util';
  * ### Example
  *
  * {@example core/di/ts/forward_ref/forward_ref_spec.ts region='forward_ref_fn'}
- * @experimental
+ * @publicApi
  */
-export interface ForwardRefFn { (): any; }
+export interface ForwardRefFn {
+  (): any;
+}
+
+const __forward_ref__ = getClosureSafeProperty({__forward_ref__: getClosureSafeProperty});
 
 /**
  * Allows to refer to references which are not yet defined.
@@ -32,11 +37,13 @@ export interface ForwardRefFn { (): any; }
  * @usageNotes
  * ### Example
  * {@example core/di/ts/forward_ref/forward_ref_spec.ts region='forward_ref'}
- * @experimental
+ * @publicApi
  */
 export function forwardRef(forwardRefFn: ForwardRefFn): Type<any> {
   (<any>forwardRefFn).__forward_ref__ = forwardRef;
-  (<any>forwardRefFn).toString = function() { return stringify(this()); };
+  (<any>forwardRefFn).toString = function() {
+    return stringify(this());
+  };
   return (<Type<any>><any>forwardRefFn);
 }
 
@@ -51,13 +58,14 @@ export function forwardRef(forwardRefFn: ForwardRefFn): Type<any> {
  * {@example core/di/ts/forward_ref/forward_ref_spec.ts region='resolve_forward_ref'}
  *
  * @see `forwardRef`
- * @experimental
+ * @publicApi
  */
-export function resolveForwardRef(type: any): any {
-  if (typeof type === 'function' && type.hasOwnProperty('__forward_ref__') &&
-      type.__forward_ref__ === forwardRef) {
-    return (<ForwardRefFn>type)();
-  } else {
-    return type;
-  }
+export function resolveForwardRef<T>(type: T): T {
+  return isForwardRef(type) ? type() : type;
+}
+
+/** Checks whether a function is wrapped by a `forwardRef`. */
+export function isForwardRef(fn: any): fn is() => any {
+  return typeof fn === 'function' && fn.hasOwnProperty(__forward_ref__) &&
+      fn.__forward_ref__ === forwardRef;
 }

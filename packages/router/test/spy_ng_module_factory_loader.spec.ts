@@ -1,13 +1,13 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {fakeAsync, tick} from '@angular/core/testing';
-import {SpyNgModuleFactoryLoader} from '../testing/src/router_testing_module';
+import {SpyNgModuleFactoryLoader} from '@angular/router/testing';
 
 describe('SpyNgModuleFactoryLoader', () => {
   it('should invoke the compiler when the setter is called', () => {

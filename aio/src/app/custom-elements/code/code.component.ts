@@ -1,15 +1,10 @@
 import { Component, ElementRef, EventEmitter, Input, OnChanges, Output, ViewChild } from '@angular/core';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { Logger } from 'app/shared/logger.service';
 import { PrettyPrinter } from './pretty-printer.service';
-import { CopierService } from 'app/shared/copier.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
-
-/**
- * If linenums is not set, this is the default maximum number of lines that
- * an example can display without line numbers.
- */
-const DEFAULT_LINE_NUMS_COUNT = 10;
 
 /**
  * Formatted Code Block
@@ -69,7 +64,7 @@ export class CodeComponent implements OnChanges {
   @Input() hideCopy: boolean;
 
   /** Language to render the code (e.g. javascript, dart, typescript). */
-  @Input() language: string;
+  @Input() language: string | undefined;
 
   /**
    * Whether to display line numbers:
@@ -77,7 +72,7 @@ export class CodeComponent implements OnChanges {
    *  - If true: show
    *  - If number: show but start at that number
    */
-  @Input() linenums: boolean | number | string;
+  @Input() linenums: boolean | number | string | undefined;
 
   /** Path to the source of the code. */
   @Input() path: string;
@@ -85,24 +80,24 @@ export class CodeComponent implements OnChanges {
   /** Region of the source of the code being displayed. */
   @Input() region: string;
 
-  /** Optional title to be displayed above the code. */
+  /** Optional header to be displayed above the code. */
   @Input()
-  set title(title: string) {
-    this._title = title;
-    this.ariaLabel = this.title ? `Copy code snippet from ${this.title}` : '';
+  set header(header: string | undefined) {
+    this._header = header;
+    this.ariaLabel = this.header ? `Copy code snippet from ${this.header}` : '';
   }
-  get title(): string { return this._title; }
-  private _title: string;
+  get header(): string|undefined { return this._header; }
+  private _header: string | undefined;
 
   @Output() codeFormatted = new EventEmitter<void>();
 
   /** The element in the template that will display the formatted code. */
-  @ViewChild('codeContainer') codeContainer: ElementRef;
+  @ViewChild('codeContainer', { static: true }) codeContainer: ElementRef;
 
   constructor(
     private snackbar: MatSnackBar,
     private pretty: PrettyPrinter,
-    private copier: CopierService,
+    private clipboard: Clipboard,
     private logger: Logger) {}
 
   ngOnChanges() {
@@ -114,15 +109,22 @@ export class CodeComponent implements OnChanges {
   }
 
   private formatDisplayedCode() {
+    const linenums = this.getLinenums();
     const leftAlignedCode = leftAlign(this.code);
     this.setCodeHtml(leftAlignedCode); // start with unformatted code
     this.codeText = this.getCodeText(); // store the unformatted code as text (for copying)
 
-    this.pretty
-        .formatCode(leftAlignedCode, this.language, this.getLinenums(leftAlignedCode))
-        .pipe(tap(() => this.codeFormatted.emit()))
-        .subscribe(c => this.setCodeHtml(c), err => { /* ignore failure to format */ }
-    );
+    const skipPrettify = of(undefined);
+    const prettifyCode = this.pretty
+        .formatCode(leftAlignedCode, this.language, linenums)
+        .pipe(tap(formattedCode => this.setCodeHtml(formattedCode)));
+
+    if (linenums !== false && this.language === 'none') {
+      this.logger.warn(`Using 'linenums' with 'language: none' is currently not supported.`);
+    }
+
+    ((this.language === 'none' ? skipPrettify : prettifyCode) as Observable<unknown>)
+        .subscribe(() => this.codeFormatted.emit(), () => { /* ignore failure to format */ });
   }
 
   /** Sets the message showing that the code could not be found. */
@@ -150,7 +152,7 @@ export class CodeComponent implements OnChanges {
   /** Copies the code snippet to the user's clipboard. */
   doCopy() {
     const code = this.codeText;
-    const successfullyCopied = this.copier.copyText(code);
+    const successfullyCopied = this.clipboard.copy(code);
 
     if (successfullyCopied) {
       this.logger.log('Copied code to clipboard:', code);
@@ -162,7 +164,7 @@ export class CodeComponent implements OnChanges {
   }
 
   /** Gets the calculated value of linenums (boolean/number). */
-  getLinenums(code: string) {
+  getLinenums() {
     const linenums =
       typeof this.linenums === 'boolean' ? this.linenums :
       this.linenums === 'true' ? true :
@@ -170,9 +172,7 @@ export class CodeComponent implements OnChanges {
       typeof this.linenums === 'string' ? parseInt(this.linenums, 10) :
       this.linenums;
 
-    // if no linenums, enable line numbers if more than one line
-    return linenums == null || isNaN(linenums as number) ?
-        (code.match(/\n/g) || []).length > DEFAULT_LINE_NUMS_COUNT : linenums;
+    return (linenums != null) && !isNaN(linenums as number) && linenums;
   }
 }
 

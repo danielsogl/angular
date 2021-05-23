@@ -1,14 +1,14 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Directive, ElementRef, Injectable, Injector, Input, OnDestroy, OnInit, Renderer2, forwardRef} from '@angular/core';
+import {Directive, ElementRef, forwardRef, Injectable, Injector, Input, NgModule, OnDestroy, OnInit, Renderer2} from '@angular/core';
 
-import {ControlValueAccessor, NG_VALUE_ACCESSOR} from './control_value_accessor';
+import {BuiltInControlValueAccessor, ControlValueAccessor, NG_VALUE_ACCESSOR} from './control_value_accessor';
 import {NgControl} from './ng_control';
 
 export const RADIO_VALUE_ACCESSOR: any = {
@@ -17,17 +17,43 @@ export const RADIO_VALUE_ACCESSOR: any = {
   multi: true
 };
 
+function throwNameError() {
+  throw new Error(`
+      If you define both a name and a formControlName attribute on your radio button, their values
+      must match. Ex: <input type="radio" formControlName="food" name="food">
+    `);
+}
+
 /**
- * Internal class used by Angular to uncheck radio buttons with the matching name.
+ * Internal-only NgModule that works as a host for the `RadioControlRegistry` tree-shakable
+ * provider. Note: the `InternalFormsSharedModule` can not be used here directly, since it's
+ * declared *after* the `RadioControlRegistry` class and the `providedIn` doesn't support
+ * `forwardRef` logic.
  */
-@Injectable()
+@NgModule()
+export class RadioControlRegistryModule {
+}
+
+/**
+ * @description
+ * Class used by Angular to track radio buttons. For internal use only.
+ */
+@Injectable({providedIn: RadioControlRegistryModule})
 export class RadioControlRegistry {
   private _accessors: any[] = [];
 
+  /**
+   * @description
+   * Adds a control to the internal registry. For internal use only.
+   */
   add(control: NgControl, accessor: RadioControlValueAccessor) {
     this._accessors.push([control, accessor]);
   }
 
+  /**
+   * @description
+   * Removes a control from the internal registry. For internal use only.
+   */
   remove(accessor: RadioControlValueAccessor) {
     for (let i = this._accessors.length - 1; i >= 0; --i) {
       if (this._accessors[i][1] === accessor) {
@@ -37,6 +63,10 @@ export class RadioControlRegistry {
     }
   }
 
+  /**
+   * @description
+   * Selects a radio button. For internal use only.
+   */
   select(accessor: RadioControlValueAccessor) {
     this._accessors.forEach((c) => {
       if (this._isSameGroup(c, accessor) && c[1] !== accessor) {
@@ -56,32 +86,23 @@ export class RadioControlRegistry {
 
 /**
  * @description
+ * The `ControlValueAccessor` for writing radio control values and listening to radio control
+ * changes. The value accessor is used by the `FormControlDirective`, `FormControlName`, and
+ * `NgModel` directives.
  *
- * Writes radio control values and listens to radio control changes.
+ * @usageNotes
  *
- * Used by `NgModel`, `FormControlDirective`, and `FormControlName`
- * to keep the view synced with the `FormControl` model.
+ * ### Using radio buttons with reactive form directives
  *
- * If you have imported the `FormsModule` or the `ReactiveFormsModule`, this
- * value accessor will be active on any radio control that has a form directive. You do
- * **not** need to add a special selector to activate it.
- *
- * ### How to use radio buttons with form directives
- *
- * To use radio buttons in a template-driven form, you'll want to ensure that radio buttons
- * in the same group have the same `name` attribute.  Radio buttons with different `name`
- * attributes do not affect each other.
- *
- * {@example forms/ts/radioButtons/radio_button_example.ts region='TemplateDriven'}
- *
- * When using radio buttons in a reactive form, radio buttons in the same group should have the
- * same `formControlName`. You can also add a `name` attribute, but it's optional.
+ * The follow example shows how to use radio buttons in a reactive form. When using radio buttons in
+ * a reactive form, radio buttons in the same group should have the same `formControlName`.
+ * Providing a `name` attribute is optional.
  *
  * {@example forms/ts/reactiveRadioButtons/reactive_radio_button_example.ts region='Reactive'}
  *
- *  * **npm package**: `@angular/forms`
- *
- *
+ * @ngModule ReactiveFormsModule
+ * @ngModule FormsModule
+ * @publicApi
  */
 @Directive({
   selector:
@@ -89,43 +110,79 @@ export class RadioControlRegistry {
   host: {'(change)': 'onChange()', '(blur)': 'onTouched()'},
   providers: [RADIO_VALUE_ACCESSOR]
 })
-export class RadioControlValueAccessor implements ControlValueAccessor,
-    OnDestroy, OnInit {
+export class RadioControlValueAccessor extends BuiltInControlValueAccessor implements
+    ControlValueAccessor, OnDestroy, OnInit {
   /** @internal */
   // TODO(issue/24571): remove '!'.
-  _state !: boolean;
+  _state!: boolean;
   /** @internal */
   // TODO(issue/24571): remove '!'.
-  _control !: NgControl;
+  _control!: NgControl;
   /** @internal */
   // TODO(issue/24571): remove '!'.
-  _fn !: Function;
-  onChange = () => {};
-  onTouched = () => {};
+  _fn!: Function;
 
+  /**
+   * The registered callback function called when a change event occurs on the input element.
+   * Note: we declare `onChange` here (also used as host listener) as a function with no arguments
+   * to override the `onChange` function (which expects 1 argument) in the parent
+   * `BaseControlValueAccessor` class.
+   * @nodoc
+   */
+  onChange = () => {};
+
+  /**
+   * @description
+   * Tracks the name of the radio input element.
+   */
   // TODO(issue/24571): remove '!'.
-  @Input() name !: string;
+  @Input() name!: string;
+
+  /**
+   * @description
+   * Tracks the name of the `FormControl` bound to the directive. The name corresponds
+   * to a key in the parent `FormGroup` or `FormArray`.
+   */
   // TODO(issue/24571): remove '!'.
-  @Input() formControlName !: string;
+  @Input() formControlName!: string;
+
+  /**
+   * @description
+   * Tracks the value of the radio input element
+   */
   @Input() value: any;
 
   constructor(
-      private _renderer: Renderer2, private _elementRef: ElementRef,
-      private _registry: RadioControlRegistry, private _injector: Injector) {}
+      renderer: Renderer2, elementRef: ElementRef, private _registry: RadioControlRegistry,
+      private _injector: Injector) {
+    super(renderer, elementRef);
+  }
 
+  /** @nodoc */
   ngOnInit(): void {
     this._control = this._injector.get(NgControl);
     this._checkName();
     this._registry.add(this._control, this);
   }
 
-  ngOnDestroy(): void { this._registry.remove(this); }
-
-  writeValue(value: any): void {
-    this._state = value === this.value;
-    this._renderer.setProperty(this._elementRef.nativeElement, 'checked', this._state);
+  /** @nodoc */
+  ngOnDestroy(): void {
+    this._registry.remove(this);
   }
 
+  /**
+   * Sets the "checked" property value on the radio input element.
+   * @nodoc
+   */
+  writeValue(value: any): void {
+    this._state = value === this.value;
+    this.setProperty('checked', this._state);
+  }
+
+  /**
+   * Registers a function called when the control value changes.
+   * @nodoc
+   */
   registerOnChange(fn: (_: any) => {}): void {
     this._fn = fn;
     this.onChange = () => {
@@ -134,25 +191,20 @@ export class RadioControlValueAccessor implements ControlValueAccessor,
     };
   }
 
-  fireUncheck(value: any): void { this.writeValue(value); }
-
-  registerOnTouched(fn: () => {}): void { this.onTouched = fn; }
-
-  setDisabledState(isDisabled: boolean): void {
-    this._renderer.setProperty(this._elementRef.nativeElement, 'disabled', isDisabled);
+  /**
+   * Sets the "value" on the radio input element and unchecks it.
+   *
+   * @param value
+   */
+  fireUncheck(value: any): void {
+    this.writeValue(value);
   }
 
   private _checkName(): void {
-    if (this.name && this.formControlName && this.name !== this.formControlName) {
-      this._throwNameError();
+    if (this.name && this.formControlName && this.name !== this.formControlName &&
+        (typeof ngDevMode === 'undefined' || ngDevMode)) {
+      throwNameError();
     }
     if (!this.name && this.formControlName) this.name = this.formControlName;
-  }
-
-  private _throwNameError(): void {
-    throw new Error(`
-      If you define both a name and a formControlName attribute on your radio button, their values
-      must match. Ex: <input type="radio" formControlName="food" name="food">
-    `);
   }
 }

@@ -1,4 +1,4 @@
-module.exports = function getExampleRegion(exampleMap, createDocMessage, collectExamples) {
+module.exports = function getExampleRegion(exampleMap, createDocMessage, collectExamples, log) {
   return function getExampleRegionImpl(doc, relativePath, regionName) {
     const EXAMPLES_FOLDERS = collectExamples.exampleFolders;
 
@@ -15,7 +15,7 @@ module.exports = function getExampleRegion(exampleMap, createDocMessage, collect
     // If still no file then we error
     if (!exampleFile) {
       const gitIgnoreFile = collectExamples.isExampleIgnored(relativePath);
-      if( gitIgnoreFile) {
+      if (gitIgnoreFile) {
         const message = createDocMessage('Ignored example file... relativePath: "' + relativePath + '"', doc) + '\n' +
         'This example file exists but has been ignored by a rule, in "' + gitIgnoreFile + '".';
         throw new Error(message);
@@ -29,10 +29,12 @@ module.exports = function getExampleRegion(exampleMap, createDocMessage, collect
     var sourceCodeDoc = exampleFile.regions[regionName || ''];
     if (!sourceCodeDoc) {
       const message = createDocMessage('Missing example region... relativePath: "' + relativePath + '", region: "' + regionName + '".', doc) + '\n' +
-                      'Regions available are: ' + Object.keys(exampleFile.regions).map(function(region) { return '"' + region + '"'; }).join(', ');
+      'Regions available are: ' + Object.keys(exampleFile.regions).map(function(region) { return '"' + region + '"'; }).join(', ');
       throw new Error(message);
     }
 
+    sourceCodeDoc.usedInDoc = doc;
+    log.debug(`Example region ${sourceCodeDoc.id} used in ${doc.id}`);
     return sourceCodeDoc.renderedContent;
   };
 };

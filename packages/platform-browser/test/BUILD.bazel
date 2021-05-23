@@ -1,14 +1,26 @@
-load("//tools:defaults.bzl", "ts_library", "ts_web_test_suite")
-load("@build_bazel_rules_nodejs//:defs.bzl", "jasmine_node_test")
+load("//tools:defaults.bzl", "jasmine_node_test", "karma_web_test_suite", "ts_library")
+load("//tools/circular_dependency_test:index.bzl", "circular_dependency_test")
 
 exports_files([
     "browser/static_assets/200.html",
     "static_assets/test.html",
 ])
 
+circular_dependency_test(
+    name = "circular_deps_test",
+    entry_point = "angular/packages/platform-browser/index.js",
+    deps = ["//packages/platform-browser"],
+)
+
+circular_dependency_test(
+    name = "testing_circular_deps_test",
+    entry_point = "angular/packages/platform-browser/testing/index.js",
+    deps = ["//packages/platform-browser/testing"],
+)
+
 ts_library(
     name = "test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = glob(["**/*.ts"]),
     deps = [
         "//packages:types",
@@ -23,22 +35,20 @@ ts_library(
         "//packages/platform-browser-dynamic",
         "//packages/platform-browser/animations",
         "//packages/platform-browser/testing",
-        "@rxjs",
+        "//packages/private/testing",
+        "@npm//rxjs",
     ],
 )
 
 jasmine_node_test(
     name = "test",
-    bootstrap = ["angular/tools/testing/init_node_spec.js"],
-    # dissable since tests are running but not yet passing
-    tags = ["manual"],
+    bootstrap = ["//tools/testing:node_es5"],
     deps = [
         ":test_lib",
-        "//tools/testing:node",
     ],
 )
 
-ts_web_test_suite(
+karma_web_test_suite(
     name = "test_web",
     static_files = [
         ":static_assets/test.html",

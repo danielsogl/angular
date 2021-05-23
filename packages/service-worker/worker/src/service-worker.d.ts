@@ -1,3 +1,4 @@
+// tslint:disable:file-header
 /**
  * Copyright (c) 2016, Tiernan Cridland
  *
@@ -52,9 +53,9 @@ interface WindowClient {
   navigate(url: string): Promise<WindowClient>;
 }
 
-type ClientFrameType = 'auxiliary' | 'top-level' | 'nested' | 'none';
-type ClientMatchTypes = 'window' | 'worker' | 'sharedworker' | 'all';
-type WindowClientState = 'hidden' | 'visible' | 'prerender' | 'unloaded';
+type ClientFrameType = 'auxiliary'|'top-level'|'nested'|'none';
+type ClientMatchTypes = 'window'|'worker'|'sharedworker'|'all';
+type WindowClientState = 'hidden'|'visible'|'prerender'|'unloaded';
 
 // Fetch API
 
@@ -72,7 +73,7 @@ interface ActivateEvent extends ExtendableEvent {}
 
 // Notification API
 
-interface NotificationEvent {
+interface NotificationEvent extends ExtendableEvent {
   action: string;
   notification: Notification;
 }
@@ -114,6 +115,7 @@ interface ServiceWorkerGlobalScope {
   addEventListener(event: 'fetch', fn: (event?: FetchEvent) => any): void;
   addEventListener(event: 'install', fn: (event?: ExtendableEvent) => any): void;
   addEventListener(event: 'push', fn: (event?: PushEvent) => any): void;
+  addEventListener(event: 'notificationclick', fn: (event?: NotificationEvent) => any): void;
   addEventListener(event: 'sync', fn: (event?: SyncEvent) => any): void;
 
   fetch(request: Request|string): Promise<Response>;

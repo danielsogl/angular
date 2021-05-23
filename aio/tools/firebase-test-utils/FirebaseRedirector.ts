@@ -1,17 +1,16 @@
 import { FirebaseRedirect } from './FirebaseRedirect';
 
-export interface FirebaseRedirectConfig {
-  source: string;
-  destination: string;
-}
+export type FirebaseRedirectConfig =
+  { source: string, regex?: undefined, destination: string } |
+  { source?: undefined, regex: string, destination: string };
 
 export class FirebaseRedirector {
   private redirects: FirebaseRedirect[];
   constructor(redirects: FirebaseRedirectConfig[]) {
-    this.redirects = redirects.map(redirect => new FirebaseRedirect(redirect.source, redirect.destination));
+    this.redirects = redirects.map(redirect => new FirebaseRedirect(redirect));
   }
 
-  redirect(url: string) {
+  redirect(url: string): string {
     let ttl = 50;
     while (ttl > 0) {
       const newUrl = this.doRedirect(url);
@@ -24,9 +23,10 @@ export class FirebaseRedirector {
     }
     throw new Error('infinite redirect loop');
   }
+
   private doRedirect(url: string) {
-    for (let i = 0; i < this.redirects.length; i++) {
-      const newUrl = this.redirects[i].replace(url);
+    for (const redirect of this.redirects) {
+      const newUrl = redirect.replace(url);
       if (newUrl !== undefined) {
         return newUrl;
       }

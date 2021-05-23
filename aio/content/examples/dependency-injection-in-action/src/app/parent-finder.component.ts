@@ -1,5 +1,4 @@
-/* tslint:disable:no-unused-variable component-selector-name one-line check-open-brace */
-/* tslint:disable:*/
+// tslint:disable: component-selector space-before-function-paren
 // #docplaster
 // #docregion
 import { Component, forwardRef, Optional, SkipSelf } from '@angular/core';
@@ -9,7 +8,7 @@ export abstract class Base { name = 'Count Basie'; }
 
 // Marker class, used as an interface
 // #docregion parent
-export abstract class Parent { name: string; }
+export abstract class Parent { abstract name: string; }
 // #enddocregion parent
 
 const DifferentParent = Parent;
@@ -19,25 +18,23 @@ const DifferentParent = Parent;
 // #enddocregion provide-the-parent
 // The `parentType` defaults to `Parent` when omitting the second parameter.
 // #docregion provide-the-parent
-const provideParent =
-// #enddocregion provide-parent, provide-the-parent
-// #docregion provide-parent
-  (component: any, parentType?: any) => {
+export function provideParent
+// #enddocregion provide-the-parent
+  (component: any, parentType?: any) {
     return { provide: parentType || Parent, useExisting: forwardRef(() => component) };
-  };
+  }
 // #enddocregion provide-parent
 
 // Simpler syntax version that always provides the component in the name of `Parent`.
-const provideTheParent =
+export function provideTheParent
 // #docregion provide-the-parent
-  (component: any) => {
+  (component: any) {
     return { provide: Parent, useExisting: forwardRef(() => component) };
-  };
+  }
 // #enddocregion provide-the-parent
 
 
 ///////// C - Child //////////
-// #docregion carol
 const templateC = `
   <div class="c">
     <h3>{{name}}</h3>
@@ -52,11 +49,10 @@ const templateC = `
 export class CarolComponent {
   name = 'Carol';
   // #docregion carol-ctor
-  constructor( @Optional() public parent: Parent ) { }
+  constructor( @Optional() public parent?: Parent ) { }
   // #enddocregion carol-ctor
 }
 // #enddocregion carol-class
-// #enddocregion carol
 
 @Component({
   selector: 'chris',
@@ -64,7 +60,7 @@ export class CarolComponent {
 })
 export class ChrisComponent {
   name = 'Chris';
-  constructor( @Optional() public parent: Parent ) { }
+  constructor( @Optional() public parent?: Parent ) { }
 }
 
 //////  Craig ///////////
@@ -81,7 +77,7 @@ export class ChrisComponent {
   </div>`
 })
 export class CraigComponent {
-  constructor( @Optional() public alex: Base ) { }
+  constructor( @Optional() public alex?: Base ) { }
 }
 // #enddocregion craig
 
@@ -105,7 +101,7 @@ const templateB = `
 export class BarryComponent implements Parent {
   name = 'Barry';
 // #docregion barry-ctor
-  constructor( @SkipSelf() @Optional() public parent: Parent ) { }
+  constructor( @SkipSelf() @Optional() public parent?: Parent ) { }
 // #enddocregion barry-ctor
 }
 // #enddocregion barry
@@ -117,7 +113,7 @@ export class BarryComponent implements Parent {
 })
 export class BobComponent implements Parent {
   name = 'Bob';
-  constructor( @SkipSelf() @Optional() public parent: Parent ) { }
+  constructor( @SkipSelf() @Optional() public parent?: Parent ) { }
 }
 
 @Component({
@@ -129,12 +125,12 @@ export class BobComponent implements Parent {
 })
 export class BethComponent implements Parent {
   name = 'Beth';
-  constructor( @SkipSelf() @Optional() public parent: Parent ) { }
+  constructor( @SkipSelf() @Optional() public parent?: Parent ) { }
 }
 
 ///////// A - Grandparent //////
 
-// #docregion alex, alex-1
+// #docregion alex-1
 @Component({
   selector: 'alex',
   template: `
@@ -159,11 +155,10 @@ export class AlexComponent extends Base
 {
   name = 'Alex';
 }
-// #enddocregion alex, alex-1
+// #enddocregion alex-1
 
 /////
 
-// #docregion alice
 @Component({
   selector: 'alice',
   template: `
@@ -184,7 +179,6 @@ export class AliceComponent implements Parent
 {
   name = 'Alice';
 }
-// #enddocregion alice
 
 //////  Cathy ///////////
 /**
@@ -200,7 +194,7 @@ export class AliceComponent implements Parent
   </div>`
 })
 export class CathyComponent {
-  constructor( @Optional() public alex: AlexComponent ) { }
+  constructor( @Optional() public alex?: AlexComponent ) { }
 }
 // #enddocregion cathy
 

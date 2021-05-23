@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -18,6 +18,7 @@
  */
 
 
+export {ɵInternalFormsSharedModule} from './directives';
 export {AbstractControlDirective} from './directives/abstract_control_directive';
 export {AbstractFormGroupDirective} from './directives/abstract_form_group_directive';
 export {CheckboxControlValueAccessor} from './directives/checkbox_value_accessor';
@@ -30,7 +31,10 @@ export {NgControlStatus, NgControlStatusGroup} from './directives/ng_control_sta
 export {NgForm} from './directives/ng_form';
 export {NgModel} from './directives/ng_model';
 export {NgModelGroup} from './directives/ng_model_group';
+export {ɵNgNoValidate} from './directives/ng_no_validate_directive';
+export {NumberValueAccessor} from './directives/number_value_accessor';
 export {RadioControlValueAccessor} from './directives/radio_control_value_accessor';
+export {RangeValueAccessor} from './directives/range_value_accessor';
 export {FormControlDirective} from './directives/reactive_directives/form_control_directive';
 export {FormControlName} from './directives/reactive_directives/form_control_name';
 export {FormGroupDirective} from './directives/reactive_directives/form_group_directive';
@@ -38,7 +42,8 @@ export {FormArrayName} from './directives/reactive_directives/form_group_name';
 export {FormGroupName} from './directives/reactive_directives/form_group_name';
 export {NgSelectOption, SelectControlValueAccessor} from './directives/select_control_value_accessor';
 export {SelectMultipleControlValueAccessor} from './directives/select_multiple_control_value_accessor';
-export {AsyncValidator, AsyncValidatorFn, CheckboxRequiredValidator, EmailValidator, MaxLengthValidator, MinLengthValidator, PatternValidator, RequiredValidator, ValidationErrors, Validator, ValidatorFn} from './directives/validators';
+export {ɵNgSelectMultipleOption} from './directives/select_multiple_control_value_accessor';
+export {AsyncValidator, AsyncValidatorFn, CheckboxRequiredValidator, EmailValidator, MaxLengthValidator, MaxValidator, MinLengthValidator, MinValidator, PatternValidator, RequiredValidator, ValidationErrors, Validator, ValidatorFn} from './directives/validators';
 export {FormBuilder} from './form_builder';
 export {AbstractControl, AbstractControlOptions, FormArray, FormControl, FormGroup} from './model';
 export {NG_ASYNC_VALIDATORS, NG_VALIDATORS, Validators} from './validators';

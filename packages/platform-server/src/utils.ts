@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ApplicationRef, NgModuleFactory, NgModuleRef, PlatformRef, StaticProvider, Type} from '@angular/core';
+import {ApplicationRef, NgModuleFactory, NgModuleRef, PlatformRef, StaticProvider, Type, ɵisPromise} from '@angular/core';
 import {ɵTRANSITION_ID} from '@angular/platform-browser';
 import {first} from 'rxjs/operators';
 
@@ -45,12 +45,19 @@ the server-rendered app can be properly bootstrapped into a client app.`);
         .then(() => {
           const platformState = platform.injector.get(PlatformState);
 
+          const asyncPromises: Promise<any>[] = [];
+
           // Run any BEFORE_APP_SERIALIZED callbacks just before rendering to string.
           const callbacks = moduleRef.injector.get(BEFORE_APP_SERIALIZED, null);
           if (callbacks) {
             for (const callback of callbacks) {
               try {
-                callback();
+                const callbackResult = callback();
+                if (ɵisPromise(callbackResult)) {
+                  // TODO: in TS3.7, callbackResult is void.
+                  asyncPromises.push(callbackResult as any);
+                }
+
               } catch (e) {
                 // Ignore exceptions.
                 console.warn('Ignoring BEFORE_APP_SERIALIZED Exception: ', e);
@@ -58,9 +65,23 @@ the server-rendered app can be properly bootstrapped into a client app.`);
             }
           }
 
-          const output = platformState.renderToString();
-          platform.destroy();
-          return output;
+          const complete = () => {
+            const output = platformState.renderToString();
+            platform.destroy();
+            return output;
+          };
+
+          if (asyncPromises.length === 0) {
+            return complete();
+          }
+
+          return Promise
+              .all(asyncPromises.map(asyncPromise => {
+                return asyncPromise.catch(e => {
+                  console.warn('Ignoring BEFORE_APP_SERIALIZED Exception: ', e);
+                });
+              }))
+              .then(complete);
         });
   });
 }
@@ -72,10 +93,12 @@ the server-rendered app can be properly bootstrapped into a client app.`);
  * `url` is the URL for the current render request.
  * `extraProviders` are the platform level providers for the current render request.
  *
- * Do not use this in a production server environment. Use pre-compiled {@link NgModuleFactory} with
- * {@link renderModuleFactory} instead.
+ * If compiling with the ViewEngine renderer, do not use this in a production server environment.
+ * Use pre-compiled {@link NgModuleFactory} with {@link renderModuleFactory} instead. If
+ * compiling with the Ivy renderer, this method is the recommended rendering method for
+ * platform-server.
  *
- * @experimental
+ * @publicApi
  */
 export function renderModule<T>(
     module: Type<T>, options: {document?: string, url?: string, extraProviders?: StaticProvider[]}):
@@ -91,7 +114,7 @@ export function renderModule<T>(
  * `url` is the URL for the current render request.
  * `extraProviders` are the platform level providers for the current render request.
  *
- * @experimental
+ * @publicApi
  */
 export function renderModuleFactory<T>(
     moduleFactory: NgModuleFactory<T>,

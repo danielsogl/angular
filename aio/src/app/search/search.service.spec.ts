@@ -1,4 +1,4 @@
-import { ReflectiveInjector, NgZone } from '@angular/core';
+import { Injector, NgZone } from '@angular/core';
 import { fakeAsync, tick } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { SearchService } from './search.service';
@@ -6,7 +6,7 @@ import { WebWorkerClient } from 'app/shared/web-worker';
 
 describe('SearchService', () => {
 
-  let injector: ReflectiveInjector;
+  let injector: Injector;
   let service: SearchService;
   let sendMessageSpy: jasmine.Spy;
   let mockWorker: WebWorkerClient;
@@ -16,20 +16,23 @@ describe('SearchService', () => {
     mockWorker = { sendMessage: sendMessageSpy } as any;
     spyOn(WebWorkerClient, 'create').and.returnValue(mockWorker);
 
-    injector = ReflectiveInjector.resolveAndCreate([
-        SearchService,
-        { provide: NgZone, useFactory: () => new NgZone({ enableLongStackTrace: false }) }
-    ]);
+    injector = Injector.create({
+      providers: [
+        { provide: SearchService, deps: [NgZone]},
+        { provide: NgZone, useFactory: () => new NgZone({ enableLongStackTrace: false }), deps: [] }
+      ]
+    });
+
     service = injector.get(SearchService);
   });
 
   describe('initWorker', () => {
     it('should create the worker and load the index after the specified delay', fakeAsync(() => {
-      service.initWorker('some/url', 100);
+      service.initWorker(100);
       expect(WebWorkerClient.create).not.toHaveBeenCalled();
       expect(mockWorker.sendMessage).not.toHaveBeenCalled();
       tick(100);
-      expect(WebWorkerClient.create).toHaveBeenCalledWith('some/url', jasmine.any(NgZone));
+      expect(WebWorkerClient.create).toHaveBeenCalledWith(jasmine.any(Worker), jasmine.any(NgZone));
       expect(mockWorker.sendMessage).toHaveBeenCalledWith('load-index');
     }));
   });
@@ -37,7 +40,7 @@ describe('SearchService', () => {
   describe('search', () => {
     beforeEach(() => {
       // We must initialize the service before calling connectSearches
-      service.initWorker('some/url', 1000);
+      service.initWorker(1000);
       // Simulate the index being ready so that searches get sent to the worker
       (service as any).ready = of(true);
     });

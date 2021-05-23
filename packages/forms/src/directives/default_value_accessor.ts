@@ -1,14 +1,15 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Directive, ElementRef, Inject, InjectionToken, Optional, Renderer2, forwardRef} from '@angular/core';
-import {ɵgetDOM as getDOM} from '@angular/platform-browser';
-import {ControlValueAccessor, NG_VALUE_ACCESSOR} from './control_value_accessor';
+import {ɵgetDOM as getDOM} from '@angular/common';
+import {Directive, ElementRef, forwardRef, Inject, InjectionToken, Optional, Renderer2} from '@angular/core';
+
+import {BaseControlValueAccessor, ControlValueAccessor, NG_VALUE_ACCESSOR} from './control_value_accessor';
 
 export const DEFAULT_VALUE_ACCESSOR: any = {
   provide: NG_VALUE_ACCESSOR,
@@ -26,21 +27,47 @@ function _isAndroid(): boolean {
 }
 
 /**
- * Turn this mode on if you want form directives to buffer IME input until compositionend
- * @experimental
+ * @description
+ * Provide this token to control if form directives buffer IME input until
+ * the "compositionend" event occurs.
+ * @publicApi
  */
 export const COMPOSITION_BUFFER_MODE = new InjectionToken<boolean>('CompositionEventMode');
 
 /**
- * The default accessor for writing a value and listening to changes that is used by the
- * `NgModel`, `FormControlDirective`, and `FormControlName` directives.
+ * The default `ControlValueAccessor` for writing a value and listening to changes on input
+ * elements. The accessor is used by the `FormControlDirective`, `FormControlName`, and
+ * `NgModel` directives.
  *
- *  ### Example
- *  ```
- *  <input type="text" name="searchQuery" ngModel>
- *  ```
+ * {@searchKeywords ngDefaultControl}
  *
+ * @usageNotes
  *
+ * ### Using the default value accessor
+ *
+ * The following example shows how to use an input element that activates the default value accessor
+ * (in this case, a text field).
+ *
+ * ```ts
+ * const firstNameControl = new FormControl();
+ * ```
+ *
+ * ```
+ * <input type="text" [formControl]="firstNameControl">
+ * ```
+ *
+ * This value accessor is used by default for `<input type="text">` and `<textarea>` elements, but
+ * you could also use it for custom components that have similar behavior and do not require special
+ * processing. In order to attach the default value accessor to a custom element, add the
+ * `ngDefaultControl` attribute as shown below.
+ *
+ * ```
+ * <custom-input-component ngDefaultControl [(ngModel)]="value"></custom-input-component>
+ * ```
+ *
+ * @ngModule ReactiveFormsModule
+ * @ngModule FormsModule
+ * @publicApi
  */
 @Directive({
   selector:
@@ -56,31 +83,26 @@ export const COMPOSITION_BUFFER_MODE = new InjectionToken<boolean>('CompositionE
   },
   providers: [DEFAULT_VALUE_ACCESSOR]
 })
-export class DefaultValueAccessor implements ControlValueAccessor {
-  onChange = (_: any) => {};
-  onTouched = () => {};
-
+export class DefaultValueAccessor extends BaseControlValueAccessor implements ControlValueAccessor {
   /** Whether the user is creating a composition string (IME events). */
   private _composing = false;
 
   constructor(
-      private _renderer: Renderer2, private _elementRef: ElementRef,
+      renderer: Renderer2, elementRef: ElementRef,
       @Optional() @Inject(COMPOSITION_BUFFER_MODE) private _compositionMode: boolean) {
+    super(renderer, elementRef);
     if (this._compositionMode == null) {
       this._compositionMode = !_isAndroid();
     }
   }
 
+  /**
+   * Sets the "value" property on the input element.
+   * @nodoc
+   */
   writeValue(value: any): void {
     const normalizedValue = value == null ? '' : value;
-    this._renderer.setProperty(this._elementRef.nativeElement, 'value', normalizedValue);
-  }
-
-  registerOnChange(fn: (_: any) => void): void { this.onChange = fn; }
-  registerOnTouched(fn: () => void): void { this.onTouched = fn; }
-
-  setDisabledState(isDisabled: boolean): void {
-    this._renderer.setProperty(this._elementRef.nativeElement, 'disabled', isDisabled);
+    this.setProperty('value', normalizedValue);
   }
 
   /** @internal */
@@ -91,7 +113,9 @@ export class DefaultValueAccessor implements ControlValueAccessor {
   }
 
   /** @internal */
-  _compositionStart(): void { this._composing = true; }
+  _compositionStart(): void {
+    this._composing = true;
+  }
 
   /** @internal */
   _compositionEnd(value: any): void {

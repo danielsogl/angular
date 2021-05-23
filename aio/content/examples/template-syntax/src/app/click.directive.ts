@@ -1,12 +1,9 @@
-/* tslint:disable use-output-property-decorator directive-class-suffix */
-// #docplaster
+/* tslint:disable directive-selector directive-class-suffix */
 import { Directive, ElementRef, EventEmitter, Output } from '@angular/core';
 
 @Directive({selector: '[myClick]'})
 export class ClickDirective {
-  // #docregion output-myClick
   @Output('myClick') clicks = new EventEmitter<string>(); //  @Output(alias) propertyName = ...
- // #enddocregion output-myClick
 
   toggle = false;
 
@@ -19,14 +16,12 @@ export class ClickDirective {
   }
 }
 
-// #docregion output-myClick2
 @Directive({
-  // #enddocregion output-myClick2
   selector: '[myClick2]',
-  // #docregion output-myClick2
+  // tslint:disable: no-outputs-metadata-property
   outputs: ['clicks:myClick']  // propertyName:alias
 })
-// #enddocregion output-myClick2
+// tslint:enable: no-outputs-metadata-property
 export class ClickDirective2 {
   clicks = new EventEmitter<string>();
   toggle = false;

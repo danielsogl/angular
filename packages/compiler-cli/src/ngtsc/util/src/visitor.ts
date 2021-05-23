@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -14,7 +14,8 @@ import * as ts from 'typescript';
  */
 export type VisitListEntryResult<B extends ts.Node, T extends B> = {
   node: T,
-  before?: B[]
+  before?: B[],
+  after?: B[],
 };
 
 /**
@@ -36,6 +37,11 @@ export abstract class Visitor {
   private _before = new Map<ts.Node, ts.Statement[]>();
 
   /**
+   * Maps statements to an array of statements that should be inserted after them.
+   */
+  private _after = new Map<ts.Node, ts.Statement[]>();
+
+  /**
    * Visit a class declaration, returning at least the transformed declaration and optionally other
    * nodes to insert before the declaration.
    */
@@ -52,13 +58,19 @@ export abstract class Visitor {
       // parent's _visit call is responsible for performing this insertion.
       this._before.set(result.node, result.before);
     }
+    if (result.after !== undefined) {
+      // Same with nodes that should be inserted after.
+      this._after.set(result.node, result.after);
+    }
     return result.node;
   }
 
   /**
    * Visit types of nodes which don't have their own explicit visitor.
    */
-  visitOtherNode<T extends ts.Node>(node: T): T { return node; }
+  visitOtherNode<T extends ts.Node>(node: T): T {
+    return node;
+  }
 
   /**
    * @internal
@@ -71,8 +83,9 @@ export abstract class Visitor {
     node = ts.visitEachChild(node, child => this._visit(child, context), context) as T;
 
     if (ts.isClassDeclaration(node)) {
-      visitedNode = this._visitListEntryNode(
-          node, (node: ts.ClassDeclaration) => this.visitClassDeclaration(node)) as typeof node;
+      visitedNode =
+          this._visitListEntryNode(
+              node, (node: ts.ClassDeclaration) => this.visitClassDeclaration(node)) as typeof node;
     } else {
       visitedNode = this.visitOtherNode(node);
     }
@@ -88,8 +101,9 @@ export abstract class Visitor {
 
   private _maybeProcessStatements<T extends ts.Node&{statements: ts.NodeArray<ts.Statement>}>(
       node: T): T {
-    // Shortcut - if every statement doesn't require nodes to be prepended, this is a no-op.
-    if (node.statements.every(stmt => !this._before.has(stmt))) {
+    // Shortcut - if every statement doesn't require nodes to be prepended or appended,
+    // this is a no-op.
+    if (node.statements.every(stmt => !this._before.has(stmt) && !this._after.has(stmt))) {
       return node;
     }
 
@@ -100,10 +114,14 @@ export abstract class Visitor {
     const newStatements: ts.Statement[] = [];
     clone.statements.forEach(stmt => {
       if (this._before.has(stmt)) {
-        newStatements.push(...(this._before.get(stmt) !as ts.Statement[]));
+        newStatements.push(...(this._before.get(stmt)! as ts.Statement[]));
         this._before.delete(stmt);
       }
       newStatements.push(stmt);
+      if (this._after.has(stmt)) {
+        newStatements.push(...(this._after.get(stmt)! as ts.Statement[]));
+        this._after.delete(stmt);
+      }
     });
     clone.statements = ts.createNodeArray(newStatements, node.statements.hasTrailingComma);
     return clone;
@@ -111,6 +129,6 @@ export abstract class Visitor {
 }
 
 function hasStatements(node: ts.Node): node is ts.Node&{statements: ts.NodeArray<ts.Statement>} {
-  const block = node as{statements?: any};
+  const block = node as {statements?: any};
   return block.statements !== undefined && Array.isArray(block.statements);
 }

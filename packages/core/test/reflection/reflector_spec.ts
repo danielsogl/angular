@@ -1,19 +1,19 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 import {Reflector} from '@angular/core/src/reflection/reflection';
-import {DELEGATE_CTOR, INHERITED_CLASS, INHERITED_CLASS_WITH_CTOR, ReflectionCapabilities} from '@angular/core/src/reflection/reflection_capabilities';
-import {global} from '@angular/core/src/util';
+import {isDelegateCtor, ReflectionCapabilities} from '@angular/core/src/reflection/reflection_capabilities';
 import {makeDecorator, makeParamDecorator, makePropDecorator} from '@angular/core/src/util/decorators';
+import {global} from '@angular/core/src/util/global';
 
 interface ClassDecoratorFactory {
   (data: ClassDecorator): any;
-  new (data: ClassDecorator): ClassDecorator;
+  new(data: ClassDecorator): ClassDecorator;
 }
 
 interface ClassDecorator {
@@ -46,10 +46,12 @@ class ClassWithDecorators {
   b: AType;
 
   @PropDecorator('p3')
-  set c(value: any) {}
+  set c(value: any) {
+  }
 
   @PropDecorator('p4')
-  someMethod() {}
+  someMethod() {
+  }
 
   constructor(@ParamDecorator('a') a: AType, @ParamDecorator('b') b: AType) {
     this.a = a;
@@ -64,14 +66,18 @@ class ClassWithoutDecorators {
 class TestObj {
   constructor(public a: any, public b: any) {}
 
-  identity(arg: any) { return arg; }
+  identity(arg: any) {
+    return arg;
+  }
 }
 
 {
   describe('Reflector', () => {
     let reflector: Reflector;
 
-    beforeEach(() => { reflector = new Reflector(new ReflectionCapabilities()); });
+    beforeEach(() => {
+      reflector = new Reflector(new ReflectionCapabilities());
+    });
 
     describe('factory', () => {
       it('should create a factory for the given type', () => {
@@ -109,6 +115,16 @@ class TestObj {
         class ForwardDep {}
         expect(reflector.parameters(Forward)).toEqual([[ForwardDep]]);
       });
+
+      it('should not return undefined types for downleveled types', () => {
+        class Dep {}
+
+        class TestService {
+          constructor() {}
+          static ctorParameters = () => [{type: undefined, decorators: []}, {type: Dep}];
+        }
+        expect(reflector.parameters(TestService)).toEqual([[], [Dep]]);
+      });
     });
 
     describe('propMetadata', () => {
@@ -121,8 +137,7 @@ class TestObj {
 
       it('should also return metadata if the class has no decorator', () => {
         class Test {
-          @PropDecorator('test')
-          prop: any;
+          @PropDecorator('test') prop: any;
         }
 
         expect(reflector.propMetadata(Test)).toEqual({'prop': [new PropDecorator('test')]});
@@ -165,21 +180,82 @@ class TestObj {
       });
     });
 
-    describe('ctor inheritance detection', () => {
-      it('should use the right regex', () => {
+    describe('isDelegateCtor', () => {
+      it('should support ES5 compiled classes', () => {
+        // These classes will be compiled to ES5 code so their stringified form
+        // below will contain ES5 constructor functions rather than native classes.
         class Parent {}
 
         class ChildNoCtor extends Parent {}
         class ChildWithCtor extends Parent {
-          constructor() { super(); }
+          constructor() {
+            super();
+          }
         }
         class ChildNoCtorPrivateProps extends Parent {
           private x = 10;
         }
 
-        expect(DELEGATE_CTOR.exec(ChildNoCtor.toString())).toBeTruthy();
-        expect(DELEGATE_CTOR.exec(ChildNoCtorPrivateProps.toString())).toBeTruthy();
-        expect(DELEGATE_CTOR.exec(ChildWithCtor.toString())).toBeFalsy();
+        expect(isDelegateCtor(ChildNoCtor.toString())).toBe(true);
+        expect(isDelegateCtor(ChildNoCtorPrivateProps.toString())).toBe(true);
+        expect(isDelegateCtor(ChildWithCtor.toString())).toBe(false);
+      });
+
+      // See: https://github.com/angular/angular/issues/38453
+      it('should support ES2015 downleveled classes (workspace TypeScript version) (downlevelIteration=true)',
+         () => {
+           const {ChildNoCtor, ChildNoCtorPrivateProps, ChildWithCtor} =
+               require('./es5_downleveled_inheritance_fixture');
+
+           expect(isDelegateCtor(ChildNoCtor.toString())).toBe(true);
+           expect(isDelegateCtor(ChildNoCtorPrivateProps.toString())).toBe(true);
+           expect(isDelegateCtor(ChildWithCtor.toString())).toBe(false);
+         });
+
+      it('should support ES2015 downleveled classes (<TS4.2) (downlevelIteration=true)', () => {
+        const ChildNoCtor = `function ChildNoCtor() {
+          return _super !== null && _super.apply(this, arguments) || this;
+        }`;
+        const ChildNoCtorPrivateProps = `function ChildNoCtorPrivateProps() {
+          var _this = _super.apply(this, __spread(arguments)) || this;
+          _this.x = 10;
+          return _this;
+        }`;
+        const ChildWithCtor = `function ChildWithCtor() {
+          return _super.call(this) || this;
+        }`;
+        expect(isDelegateCtor(ChildNoCtor)).toBe(true);
+        expect(isDelegateCtor(ChildNoCtorPrivateProps)).toBe(true);
+        expect(isDelegateCtor(ChildWithCtor)).toBe(false);
+      });
+
+      it('should support ES2015 downleveled classes (>=TS4.2) (downlevelIteration=true)', () => {
+        const ChildNoCtor = `function ChildNoCtor() {
+          return _super !== null && _super.apply(this, arguments) || this;
+        }`;
+        const ChildNoCtorPrivateProps = `function ChildNoCtorPrivateProps() {
+          var _this = _super.apply(this, __spreadArray([], __read(arguments))) || this;
+          _this.x = 10;
+          return _this;
+        }`;
+        const ChildWithCtor = `function ChildWithCtor() {
+          return _super.call(this) || this;
+        }`;
+        expect(isDelegateCtor(ChildNoCtor)).toBe(true);
+        expect(isDelegateCtor(ChildNoCtorPrivateProps)).toBe(true);
+        expect(isDelegateCtor(ChildWithCtor)).toBe(false);
+      });
+
+      it('should support ES2015 classes when minified', () => {
+        // These classes are ES2015 in minified form
+        const ChildNoCtorMinified = 'class ChildNoCtor extends Parent{}';
+        const ChildWithCtorMinified = 'class ChildWithCtor extends Parent{constructor(){super()}}';
+        const ChildNoCtorPrivatePropsMinified =
+            'class ChildNoCtorPrivateProps extends Parent{constructor(){super(...arguments);this.x=10}}';
+
+        expect(isDelegateCtor(ChildNoCtorMinified)).toBe(true);
+        expect(isDelegateCtor(ChildNoCtorPrivatePropsMinified)).toBe(true);
+        expect(isDelegateCtor(ChildWithCtorMinified)).toBe(false);
       });
 
       it('should not throw when no prototype on type', () => {
@@ -190,27 +266,35 @@ class TestObj {
       });
 
       it('should support native class', () => {
+        // These classes are defined as strings unlike the tests above because otherwise
+        // the compiler (of these tests) will convert them to ES5 constructor function
+        // style classes.
         const ChildNoCtor = `class ChildNoCtor extends Parent {}\n`;
         const ChildWithCtor = `class ChildWithCtor extends Parent {\n` +
             `  constructor() { super(); }` +
             `}\n`;
+        const ChildNoCtorComplexBase = `class ChildNoCtor extends Parent['foo'].bar(baz) {}\n`;
+        const ChildWithCtorComplexBase = `class ChildWithCtor extends Parent['foo'].bar(baz) {\n` +
+            `  constructor() { super(); }` +
+            `}\n`;
         const ChildNoCtorPrivateProps = `class ChildNoCtorPrivateProps extends Parent {\n` +
-            `  private x = 10;\n` +
+            `  constructor() {\n` +
+            // Note that the instance property causes a pass-through constructor to be synthesized
+            `    super(...arguments);\n` +
+            `    this.x = 10;\n` +
+            `  }\n` +
             `}\n`;
 
-        const checkNoOwnMetadata = (str: string) =>
-            INHERITED_CLASS.exec(str) && !INHERITED_CLASS_WITH_CTOR.exec(str);
-
-        expect(checkNoOwnMetadata(ChildNoCtor)).toBeTruthy();
-        expect(checkNoOwnMetadata(ChildNoCtorPrivateProps)).toBeTruthy();
-        expect(checkNoOwnMetadata(ChildWithCtor)).toBeFalsy();
+        expect(isDelegateCtor(ChildNoCtor)).toBe(true);
+        expect(isDelegateCtor(ChildNoCtorPrivateProps)).toBe(true);
+        expect(isDelegateCtor(ChildWithCtor)).toBe(false);
+        expect(isDelegateCtor(ChildNoCtorComplexBase)).toBe(true);
+        expect(isDelegateCtor(ChildWithCtorComplexBase)).toBe(false);
       });
 
       it('should properly handle all class forms', () => {
-        const ctor = (str: string) => expect(INHERITED_CLASS.exec(str)).toBeTruthy() &&
-            expect(INHERITED_CLASS_WITH_CTOR.exec(str)).toBeTruthy();
-        const noCtor = (str: string) => expect(INHERITED_CLASS.exec(str)).toBeTruthy() &&
-            expect(INHERITED_CLASS_WITH_CTOR.exec(str)).toBeFalsy();
+        const ctor = (str: string) => expect(isDelegateCtor(str)).toBe(false);
+        const noCtor = (str: string) => expect(isDelegateCtor(str)).toBe(true);
 
         ctor(`class Bar extends Foo {constructor(){}}`);
         ctor(`class Bar extends Foo { constructor ( ) {} }`);
@@ -222,12 +306,10 @@ class TestObj {
         noCtor(`class $Bar1_ extends $Fo0_ {}`);
         noCtor(`class Bar extends Foo { other(){} }`);
       });
-
     });
 
     describe('inheritance with decorators', () => {
       it('should inherit annotations', () => {
-
         @ClassDecorator({value: 'parent'})
         class Parent {
         }
@@ -253,7 +335,7 @@ class TestObj {
         expect(reflector.annotations(NoDecorators)).toEqual([]);
         expect(reflector.annotations(<any>{})).toEqual([]);
         expect(reflector.annotations(<any>1)).toEqual([]);
-        expect(reflector.annotations(null !)).toEqual([]);
+        expect(reflector.annotations(null!)).toEqual([]);
       });
 
       it('should inherit parameters', () => {
@@ -283,11 +365,15 @@ class TestObj {
         // as otherwise TS won't capture the ctor arguments!
         @ClassDecorator({value: 'child'})
         class ChildWithCtor extends Parent {
-          constructor(@ParamDecorator('c') c: C) { super(null !, null !); }
+          constructor(@ParamDecorator('c') c: C) {
+            super(null!, null!);
+          }
         }
 
         class ChildWithCtorNoDecorator extends Parent {
-          constructor(a: any, b: any, c: any) { super(null !, null !); }
+          constructor(a: any, b: any, c: any) {
+            super(null!, null!);
+          }
         }
 
         class NoDecorators {}
@@ -320,7 +406,7 @@ class TestObj {
         expect(reflector.parameters(NoDecorators)).toEqual([]);
         expect(reflector.parameters(<any>{})).toEqual([]);
         expect(reflector.parameters(<any>1)).toEqual([]);
-        expect(reflector.parameters(null !)).toEqual([]);
+        expect(reflector.parameters(null!)).toEqual([]);
       });
 
       it('should inherit property metadata', () => {
@@ -330,20 +416,16 @@ class TestObj {
 
         class Parent {
           // TODO(issue/24571): remove '!'.
-          @PropDecorator('a')
-          a !: A;
+          @PropDecorator('a') a!: A;
           // TODO(issue/24571): remove '!'.
-          @PropDecorator('b1')
-          b !: B;
+          @PropDecorator('b1') b!: B;
         }
 
         class Child extends Parent {
           // TODO(issue/24571): remove '!'.
-          @PropDecorator('b2')
-          b !: B;
+          @PropDecorator('b2') b!: B;
           // TODO(issue/24571): remove '!'.
-          @PropDecorator('c')
-          c !: C;
+          @PropDecorator('c') c!: C;
         }
 
         class NoDecorators {}
@@ -363,7 +445,7 @@ class TestObj {
         expect(reflector.propMetadata(NoDecorators)).toEqual({});
         expect(reflector.propMetadata(<any>{})).toEqual({});
         expect(reflector.propMetadata(<any>1)).toEqual({});
-        expect(reflector.propMetadata(null !)).toEqual({});
+        expect(reflector.propMetadata(null!)).toEqual({});
       });
 
       it('should inherit lifecycle hooks', () => {
@@ -386,12 +468,10 @@ class TestObj {
 
         expect(hooks(Child, ['hook1', 'hook2', 'hook3'])).toEqual([true, true, true]);
       });
-
     });
 
     describe('inheritance with tsickle', () => {
       it('should inherit annotations', () => {
-
         class Parent {
           static decorators = [{type: ClassDecorator, args: [{value: 'parent'}]}];
         }
@@ -428,9 +508,12 @@ class TestObj {
         class Child extends Parent {}
 
         class ChildWithCtor extends Parent {
-          static ctorParameters =
-              () => [{type: C, decorators: [{type: ParamDecorator, args: ['c']}]}, ]
-          constructor() { super(); }
+          static ctorParameters = () =>
+              [{type: C, decorators: [{type: ParamDecorator, args: ['c']}]},
+          ]
+          constructor() {
+            super();
+          }
         }
 
         // Check that metadata for Parent was not changed!
@@ -476,12 +559,10 @@ class TestObj {
           'c': [new PropDecorator('c')]
         });
       });
-
     });
 
     describe('inheritance with es5 API', () => {
       it('should inherit annotations', () => {
-
         class Parent {
           static annotations = [new ClassDecorator({value: 'parent'})];
         }
@@ -521,7 +602,9 @@ class TestObj {
           static parameters = [
             [C, new ParamDecorator('c')],
           ];
-          constructor() { super(); }
+          constructor() {
+            super();
+          }
         }
 
         // Check that metadata for Parent was not changed!

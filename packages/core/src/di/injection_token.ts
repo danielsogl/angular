@@ -1,21 +1,22 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Type} from '../type';
+import {Type} from '../interface/type';
+import {assertLessThan} from '../util/assert';
 
-import {InjectableDef, defineInjectable} from './defs';
+import {ɵɵdefineInjectable} from './interface/defs';
 
 /**
  * Creates a token that can be used in a DI Provider.
  *
  * Use an `InjectionToken` whenever the type you are injecting is not reified (does not have a
  * runtime representation) such as when injecting an interface, callable type, array or
- * parametrized type.
+ * parameterized type.
  *
  * `InjectionToken` is parameterized on `T` which is the type of object which will be returned by
  * the `Injector`. This provides additional level of type safety.
@@ -39,34 +40,47 @@ import {InjectableDef, defineInjectable} from './defs';
  * @usageNotes
  * ### Basic Example
  *
+ * ### Plain InjectionToken
+ *
  * {@example core/di/ts/injector_spec.ts region='InjectionToken'}
  *
- * ### Tree-shakeable Example
+ * ### Tree-shakable InjectionToken
  *
- * {@example core/di/ts/injector_spec.ts region='ShakeableInjectionToken'}
+ * {@example core/di/ts/injector_spec.ts region='ShakableInjectionToken'}
  *
+ *
+ * @publicApi
  */
 export class InjectionToken<T> {
   /** @internal */
   readonly ngMetadataName = 'InjectionToken';
 
-  readonly ngInjectableDef: never|undefined;
+  readonly ɵprov: unknown;
 
   constructor(protected _desc: string, options?: {
-    providedIn?: Type<any>| 'root' | null,
-    factory: () => T
+    providedIn?: Type<any>|'root'|'platform'|'any'|null, factory: () => T
   }) {
-    if (options !== undefined) {
-      this.ngInjectableDef = defineInjectable({
+    this.ɵprov = undefined;
+    if (typeof options == 'number') {
+      (typeof ngDevMode === 'undefined' || ngDevMode) &&
+          assertLessThan(options, 0, 'Only negative numbers are supported here');
+      // This is a special hack to assign __NG_ELEMENT_ID__ to this instance.
+      // See `InjectorMarkers`
+      (this as any).__NG_ELEMENT_ID__ = options;
+    } else if (options !== undefined) {
+      this.ɵprov = ɵɵdefineInjectable({
+        token: this,
         providedIn: options.providedIn || 'root',
         factory: options.factory,
       });
-    } else {
-      this.ngInjectableDef = undefined;
     }
   }
 
-  toString(): string { return `InjectionToken ${this._desc}`; }
+  toString(): string {
+    return `InjectionToken ${this._desc}`;
+  }
 }
 
-export interface InjectableDefToken<T> extends InjectionToken<T> { ngInjectableDef: never; }
+export interface InjectableDefToken<T> extends InjectionToken<T> {
+  ɵprov: unknown;
+}

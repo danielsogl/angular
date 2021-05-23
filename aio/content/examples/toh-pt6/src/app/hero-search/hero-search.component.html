@@ -1,8 +1,7 @@
 <div id="search-component">
-  <h4>Hero Search</h4>
-
+  <label for="search-box">Hero Search</label>
   <!-- #docregion input -->
-  <input #searchBox id="search-box" (keyup)="search(searchBox.value)" />
+  <input #searchBox id="search-box" (input)="search(searchBox.value)" />
   <!-- #enddocregion input -->
 
   <ul class="search-result">

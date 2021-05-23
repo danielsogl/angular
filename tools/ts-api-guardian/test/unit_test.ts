@@ -1,15 +1,14 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import * as chai from 'chai';
 import * as ts from 'typescript';
 
-import {SerializationOptions, publicApiInternal} from '../lib/serializer';
+import {publicApiInternal, SerializationOptions} from '../lib/serializer';
 
 const classesAndInterfaces = `
   export declare class A {
@@ -125,8 +124,8 @@ describe('unit test', () => {
     const expected = `
     `;
     check({'classes_and_interfaces.d.ts': classesAndInterfaces, 'file.d.ts': input}, expected);
-    chai.assert.deepEqual(
-        warnings, ['file.d.ts(1,1): error: No export declaration found for symbol "Foo"']);
+    expect(warnings).toEqual(
+        ['file.d.ts(1,1): error: No export declaration found for symbol "Foo"']);
   });
 
   it('should sort exports', () => {
@@ -357,28 +356,32 @@ describe('unit test', () => {
     check({'file.d.ts': input}, expected, {stripExportPattern: /^__.*/});
   });
 
-  it('should throw on using non-whitelisted module imports in expression position', () => {
-    const input = `
+  it('should throw on using module imports in expression position that were not explicitly allowed',
+     () => {
+       const input = `
       import * as foo from './foo';
       export declare class A extends foo.A {
       }
     `;
-    checkThrows(
-        {'file.d.ts': input}, 'file.d.ts(2,32): error: Module identifier "foo" is not allowed. ' +
-            'Remove it from source or whitelist it via --allowModuleIdentifiers.');
-  });
+       checkThrows(
+           {'file.d.ts': input},
+           'file.d.ts(2,32): error: Module identifier "foo" is not allowed. ' +
+               'Remove it from source or allow it via --allowModuleIdentifiers.');
+     });
 
-  it('should throw on using non-whitelisted module imports in type position', () => {
-    const input = `
+  it('should throw on using module imports in type position that were not explicitly allowed',
+     () => {
+       const input = `
       import * as foo from './foo';
       export type A = foo.A;
     `;
-    checkThrows(
-        {'file.d.ts': input}, 'file.d.ts(2,17): error: Module identifier "foo" is not allowed. ' +
-            'Remove it from source or whitelist it via --allowModuleIdentifiers.');
-  });
+       checkThrows(
+           {'file.d.ts': input},
+           'file.d.ts(2,17): error: Module identifier "foo" is not allowed. ' +
+               'Remove it from source or allow it via --allowModuleIdentifiers.');
+     });
 
-  it('should not throw on using whitelisted module imports', () => {
+  it('should not throw on using explicitly allowed module imports', () => {
     const input = `
       import * as foo from './foo';
       export declare class A extends foo.A {
@@ -391,7 +394,7 @@ describe('unit test', () => {
     check({'file.d.ts': input}, expected, {allowModuleIdentifiers: ['foo']});
   });
 
-  it('should not throw if non-whitelisted module imports are not written', () => {
+  it('should not throw if module imports, that were not explicitly allowed, are not used', () => {
     const input = `
       import * as foo from './foo';
       export declare class A {
@@ -404,7 +407,7 @@ describe('unit test', () => {
     check({'file.d.ts': input}, expected);
   });
 
-  it('should keep stability annotations of exports in docstrings', () => {
+  it('should copy specified jsdoc tags of exports in docstrings', () => {
     const input = `
       /**
        * @deprecated This is useless now
@@ -428,14 +431,14 @@ describe('unit test', () => {
       /** @experimental */
       export declare const b: string;
 
-      /** @stable */
       export declare var c: number;
     `;
-    check({'file.d.ts': input}, expected);
+    check({'file.d.ts': input}, expected, {exportTags: {toCopy: ['deprecated', 'experimental']}});
   });
 
-  it('should keep stability annotations of fields in docstrings', () => {
+  it('should copy specified jsdoc tags of fields in docstrings', () => {
     const input = `
+      /** @otherTag */
       export declare class A {
         /**
          * @stable
@@ -443,6 +446,7 @@ describe('unit test', () => {
         value: number;
         /**
          * @experimental
+         * @otherTag
          */
         constructor();
         /**
@@ -453,12 +457,157 @@ describe('unit test', () => {
     `;
     const expected = `
       export declare class A {
-        /** @stable */ value: number;
+        value: number;
         /** @experimental */ constructor();
         /** @deprecated */ foo(): void;
       }
     `;
-    check({'file.d.ts': input}, expected);
+    check({'file.d.ts': input}, expected, {memberTags: {toCopy: ['deprecated', 'experimental']}});
+  });
+
+  it('should copy specified jsdoc tags of parameters in docstrings', () => {
+    const input = `
+      export declare class A {
+        foo(str: string, /** @deprecated */ value: number): void;
+      }
+    `;
+    const expected = `
+      export declare class A {
+        foo(str: string, /** @deprecated */ value: number): void;
+      }
+    `;
+    check({'file.d.ts': input}, expected, {paramTags: {toCopy: ['deprecated', 'experimental']}});
+  });
+
+  it('should throw on using banned jsdoc tags on exports', () => {
+    const input = `
+      /**
+       * @stable
+       */
+      export declare class A {
+        value: number;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(4,1): error: Banned jsdoc tags - "@stable" - were found on `A`.',
+        {exportTags: {banned: ['stable']}});
+  });
+
+  it('should throw on using banned jsdoc tags on fields', () => {
+    const input = `
+      export declare class A {
+        /**
+         * @stable
+         */
+        value: number;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(5,3): error: Banned jsdoc tags - "@stable" - were found on `value`.',
+        {memberTags: {banned: ['stable']}});
+  });
+
+  it('should throw on using banned jsdoc tags on parameters', () => {
+    const input = `
+      export declare class A {
+        foo(/** @stable */ param: number): void;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(2,22): error: Banned jsdoc tags - "@stable" - were found on `param`.',
+        {paramTags: {banned: ['stable']}});
+  });
+
+  it('should throw on missing required jsdoc tags on exports', () => {
+    const input = `
+      /** @experimental */
+      export declare class A {
+        value: number;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(2,1): error: Required jsdoc tags - One of the tags: "@stable" - must exist on `A`.',
+        {exportTags: {requireAtLeastOne: ['stable']}});
+  });
+
+  it('should throw on missing required jsdoc tags on fields', () => {
+    const input = `
+      /** @experimental */
+      export declare class A {
+        value: number;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(3,3): error: Required jsdoc tags - One of the tags: "@stable" - must exist on `value`.',
+        {memberTags: {requireAtLeastOne: ['stable']}});
+  });
+
+  it('should throw on missing required jsdoc tags on parameters', () => {
+    const input = `
+      /** @experimental */
+      export declare class A {
+        foo(param: number): void;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(3,7): error: Required jsdoc tags - One of the tags: "@stable" - must exist on `param`.',
+        {paramTags: {requireAtLeastOne: ['stable']}});
+  });
+
+  it('should require at least one of the requireAtLeastOne tags', () => {
+    const input = `
+      /** @experimental */
+      export declare class A {
+        foo(param: number): void;
+      }
+    `;
+    checkThrows(
+        {'file.d.ts': input},
+        'file.d.ts(3,7): error: Required jsdoc tags - One of the tags: "@stable", "@foo", "@bar" - must exist on `param`.',
+        {paramTags: {requireAtLeastOne: ['stable', 'foo', 'bar']}});
+  });
+
+  it('should allow with one of the requireAtLeastOne tags found', () => {
+    const input = `
+      /**
+       * @foo
+       * @bar
+       * @stable
+       */
+      export declare class A {
+      }
+      /**
+       * @foo
+       */
+      export declare const b: string;
+      /**
+       * @bar
+       */
+      export declare var c: number;
+      /**
+       * @stable
+       */
+      export declare function d(): void;
+    `;
+    const expected = `
+    export declare class A {
+    }
+
+    export declare const b: string;
+
+    export declare var c: number;
+
+    export declare function d(): void;
+    `;
+    check(
+        {'file.d.ts': input}, expected,
+        {exportTags: {requireAtLeastOne: ['stable', 'foo', 'bar']}});
   });
 });
 
@@ -484,11 +633,12 @@ function getMockHost(files: {[name: string]: string}): ts.CompilerHost {
 function check(
     files: {[name: string]: string}, expected: string, options: SerializationOptions = {}) {
   const actual = publicApiInternal(getMockHost(files), 'file.d.ts', {}, options);
-  chai.assert.equal(actual.trim(), stripExtraIndentation(expected).trim());
+  expect(actual.trim()).toBe(stripExtraIndentation(expected).trim());
 }
 
-function checkThrows(files: {[name: string]: string}, error: string) {
-  chai.assert.throws(() => { publicApiInternal(getMockHost(files), 'file.d.ts', {}); }, error);
+function checkThrows(
+    files: {[name: string]: string}, error: string, options: SerializationOptions = {}) {
+  expect(() => publicApiInternal(getMockHost(files), 'file.d.ts', {}, options)).toThrowError(error);
 }
 
 function stripExtraIndentation(text: string) {
@@ -496,7 +646,7 @@ function stripExtraIndentation(text: string) {
   // Ignore first and last new line
   lines = lines.slice(1, lines.length - 1);
   const commonIndent = lines.reduce((min, line) => {
-    const indent = /^( *)/.exec(line) ![1].length;
+    const indent = /^( *)/.exec(line)![1].length;
     // Ignore empty line
     return line.length ? Math.min(min, indent) : min;
   }, text.length);

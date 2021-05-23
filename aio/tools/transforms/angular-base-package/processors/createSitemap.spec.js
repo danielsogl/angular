@@ -47,24 +47,24 @@ describe('createSitemap processor', () => {
         expect(docs.pop().urls).toEqual(['abc', 'fgh']);
       });
 
-      it('ignoring blacklisted doc types', () => {
+      it('ignoring excluded doc types', () => {
         const docs = [
           { path: 'abc', outputPath: 'abc', docType: 'good' },
           { path: 'cde', outputPath: 'cde', docType: 'bad' },
           { path: 'fgh', outputPath: 'fgh', docType: 'good' },
         ];
-        processor.blacklistedDocTypes = ['bad'];
+        processor.ignoredDocTypes = ['bad'];
         processor.$process(docs);
         expect(docs.pop().urls).toEqual(['abc', 'fgh']);
       });
 
-      it('ignoring blacklisted paths', () => {
+      it('ignoring excluded paths', () => {
         const docs = [
           { path: 'abc', outputPath: 'abc' },
           { path: 'cde', outputPath: 'cde' },
           { path: 'fgh', outputPath: 'fgh' },
         ];
-        processor.blacklistedPaths = ['cde'];
+        processor.ignoredPaths = ['cde'];
         processor.$process(docs);
         expect(docs.pop().urls).toEqual(['abc', 'fgh']);
       });

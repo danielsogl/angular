@@ -1,11 +1,9 @@
 // #docplaster
-// #docregion whole-ngmodule
-
 // imports
 import { BrowserModule } from '@angular/platform-browser';
 import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { HttpModule } from '@angular/http';
+import { HttpClientModule } from '@angular/common/http';
 
 import { AppComponent } from './app.component';
 // #docregion directive-import
@@ -21,14 +19,14 @@ import { ItemDirective } from './item.directive';
     ItemDirective
   ],
   // #enddocregion declarations
+  // #docregion imports
   imports: [
     BrowserModule,
     FormsModule,
-    HttpModule
+    HttpClientModule
   ],
+  // #enddocregion imports
   providers: [],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
-
-// #enddocregion whole-ngmodule

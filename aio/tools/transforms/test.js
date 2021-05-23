@@ -13,5 +13,9 @@
 
 const Jasmine = require('jasmine');
 const jasmine = new Jasmine({ projectBaseDir: __dirname });
-jasmine.loadConfig({ spec_files: ['**/*.spec.js'] });
-jasmine.execute();
+jasmine.loadConfig({ random: true, spec_files: ['**/*.spec.js'] });
+jasmine.execute().catch((error) => {
+  // Something broke so non-zero exit to prevent the process from succeeding.
+  console.error(error);
+  process.exit(1);
+});

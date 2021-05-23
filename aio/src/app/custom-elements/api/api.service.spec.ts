@@ -29,16 +29,13 @@ describe('ApiService', () => {
 
   it('should not immediately connect to the server', () => {
     httpMock.expectNone({});
+    expect().nothing();  // Prevent jasmine from complaining about no expectations.
   });
 
   it('subscribers should be completed/unsubscribed when service destroyed', () => {
       let completed = false;
 
-      service.sections.subscribe(
-        undefined,
-        undefined,
-        () => completed = true
-      );
+      service.sections.subscribe({complete: () => completed = true});
 
       service.ngOnDestroy();
       expect(completed).toBe(true);
@@ -50,7 +47,10 @@ describe('ApiService', () => {
   describe('#sections', () => {
 
     it('first subscriber should fetch sections', done => {
-      const data = [{name: 'a', title: 'A', path: '', items: []}, {name: 'b', title: 'B', path: '', items: []}];
+      const data = [
+        {name: 'a', title: 'A', path: '', items: [], deprecated: false},
+        {name: 'b', title: 'B', path: '', items: [], deprecated: false},
+      ];
 
       service.sections.subscribe(sections => {
         expect(sections).toEqual(data);
@@ -61,7 +61,10 @@ describe('ApiService', () => {
     });
 
     it('second subscriber should get previous sections and NOT trigger refetch', done => {
-      const data = [{name: 'a', title: 'A', path: '', items: []}, {name: 'b', title: 'B', path: '', items: []}];
+      const data = [
+        {name: 'a', title: 'A', path: '', items: [], deprecated: false},
+        {name: 'b', title: 'B', path: '', items: [], deprecated: false},
+      ];
       let subscriptions = 0;
 
       service.sections.subscribe(sections => {
@@ -85,13 +88,17 @@ describe('ApiService', () => {
     it('should connect to the server w/ expected URL', () => {
       service.fetchSections();
       httpMock.expectOne('generated/docs/api/api-list.json');
+      expect().nothing();  // Prevent jasmine from complaining about no expectations.
     });
 
     it('should refresh the #sections observable w/ new content on second call', () => {
 
       let call = 0;
 
-      let data = [{name: 'a', title: 'A', path: '', items: []}, {name: 'b', title: 'B', path: '', items: []}];
+      let data = [
+        {name: 'a', title: 'A', path: '', items: [], deprecated: false},
+        {name: 'b', title: 'B', path: '', items: [], deprecated: false},
+      ];
 
       service.sections.subscribe(sections => {
         // called twice during this test
@@ -103,7 +110,7 @@ describe('ApiService', () => {
       httpMock.expectOne({}).flush(data);
 
       // refresh/refetch
-      data = [{name: 'c', title: 'C', path: '', items: []}];
+      data = [{name: 'c', title: 'C', path: '', items: [], deprecated: false}];
       service.fetchSections();
       httpMock.expectOne({}).flush(data);
 

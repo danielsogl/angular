@@ -1,25 +1,25 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
 /**
- * @experimental
+ * @publicApi
  */
 export type Glob = string;
 
 /**
- * @experimental
+ * @publicApi
  */
 export type Duration = string;
 
 /**
  * A top-level Angular Service Worker configuration object.
  *
- * @experimental
+ * @publicApi
  */
 export interface Config {
   appData?: {};
@@ -27,36 +27,35 @@ export interface Config {
   assetGroups?: AssetGroup[];
   dataGroups?: DataGroup[];
   navigationUrls?: string[];
+  navigationRequestStrategy?: 'freshness'|'performance';
 }
 
 /**
  * Configuration for a particular group of assets.
  *
- * @experimental
+ * @publicApi
  */
 export interface AssetGroup {
   name: string;
   installMode?: 'prefetch'|'lazy';
   updateMode?: 'prefetch'|'lazy';
-  resources: {
-    files?: Glob[];
-    /** @deprecated As of v6 `versionedFiles` and `files` options have the same behavior. Use
-       `files` instead. */
-    versionedFiles?: Glob[];
-    urls?: Glob[];
-  };
+  resources: {files?: Glob[]; urls?: Glob[];};
+  cacheQueryOptions?: Pick<CacheQueryOptions, 'ignoreSearch'>;
 }
 
 /**
  * Configuration for a particular group of dynamic URLs.
  *
- * @experimental
+ * @publicApi
  */
 export interface DataGroup {
   name: string;
   urls: Glob[];
   version?: number;
   cacheConfig: {
-    maxSize: number; maxAge: Duration; timeout?: Duration; strategy?: 'freshness' | 'performance';
+    maxSize: number; maxAge: Duration;
+    timeout?: Duration;
+    strategy?: 'freshness' | 'performance';
   };
+  cacheQueryOptions?: Pick<CacheQueryOptions, 'ignoreSearch'>;
 }

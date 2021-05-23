@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {getSymbolIterator, looseIdentical} from '../util';
+import {getSymbolIterator} from '../util/symbol';
 
 export function devModeEqual(a: any, b: any): boolean {
   const isListLikeIterableA = isListLikeIterable(a);
@@ -19,7 +19,7 @@ export function devModeEqual(a: any, b: any): boolean {
     if (!isListLikeIterableA && isAObject && !isListLikeIterableB && isBObject) {
       return true;
     } else {
-      return looseIdentical(a, b);
+      return Object.is(a, b);
     }
   }
 }
@@ -42,37 +42,34 @@ export function devModeEqual(a: any, b: any): boolean {
  *  }
  * ```
  *
+ * @publicApi
+ * @deprecated from v10 stop using. (No replacement, deemed unnecessary.)
  */
 export class WrappedValue {
   /** @deprecated from 5.3, use `unwrap()` instead - will switch to protected */
   wrapped: any;
 
-  constructor(value: any) { this.wrapped = value; }
+  constructor(value: any) {
+    this.wrapped = value;
+  }
 
   /** Creates a wrapped value. */
-  static wrap(value: any): WrappedValue { return new WrappedValue(value); }
+  static wrap(value: any): WrappedValue {
+    return new WrappedValue(value);
+  }
 
   /**
    * Returns the underlying value of a wrapped value.
    * Returns the given `value` when it is not wrapped.
    **/
-  static unwrap(value: any): any { return WrappedValue.isWrapped(value) ? value.wrapped : value; }
+  static unwrap(value: any): any {
+    return WrappedValue.isWrapped(value) ? value.wrapped : value;
+  }
 
   /** Returns true if `value` is a wrapped value. */
-  static isWrapped(value: any): value is WrappedValue { return value instanceof WrappedValue; }
-}
-
-/**
- * Represents a basic change from a previous to a new value.
- *
- */
-export class SimpleChange {
-  constructor(public previousValue: any, public currentValue: any, public firstChange: boolean) {}
-
-  /**
-   * Check whether the new value is the first value assigned.
-   */
-  isFirstChange(): boolean { return this.firstChange; }
+  static isWrapped(value: any): value is WrappedValue {
+    return value instanceof WrappedValue;
+  }
 }
 
 export function isListLikeIterable(obj: any): boolean {

@@ -41,7 +41,6 @@ System.config({
     '@angular/compiler/testing': 'npm:@angular/compiler/bundles/compiler-testing.umd.js',
     '@angular/platform-browser/testing': 'npm:@angular/platform-browser/bundles/platform-browser-testing.umd.js',
     '@angular/platform-browser-dynamic/testing': 'npm:@angular/platform-browser-dynamic/bundles/platform-browser-dynamic-testing.umd.js',
-    '@angular/http/testing': 'npm:@angular/http/bundles/http-testing.umd.js',
     '@angular/router/testing': 'npm:@angular/router/bundles/router-testing.umd.js',
     '@angular/forms/testing': 'npm:@angular/forms/bundles/forms-testing.umd.js',
   },
@@ -63,7 +62,7 @@ function importSystemJsExtras(){
   });
 }
 
-function initTestBed(){
+function initTestBed() {
   return Promise.all([
     System.import('@angular/core/testing'),
     System.import('@angular/platform-browser-dynamic/testing')
@@ -80,7 +79,7 @@ function initTestBed(){
 }
 
 // Import all spec files and start karma
-function initTesting () {
+function initTesting() {
   return Promise.all(
     allSpecFiles.map(function (moduleName) {
       return System.import(moduleName);

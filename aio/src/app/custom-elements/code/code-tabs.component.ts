@@ -1,15 +1,16 @@
 /* tslint:disable component-selector */
-import { Component, AfterViewInit, ViewChild, Input, ViewChildren, QueryList, OnInit } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { CodeComponent } from './code.component';
 
 export interface TabInfo {
-  class: string|null;
+  class: string;
   code: string;
-  language: string|null;
-  linenums: any;
   path: string;
   region: string;
-  title: string|null;
+
+  header?: string;
+  language?: string;
+  linenums?: string;
 }
 
 /**
@@ -26,17 +27,17 @@ export interface TabInfo {
     <div #content style="display: none"><ng-content></ng-content></div>
 
     <mat-card>
-      <mat-tab-group class="code-tab-group" disableRipple>
+      <mat-tab-group class="code-tab-group" [disableRipple]="true">
         <mat-tab style="overflow-y: hidden;" *ngFor="let tab of tabs">
           <ng-template mat-tab-label>
-            <span class="{{ tab.class }}">{{ tab.title }}</span>
+            <span class="{{ tab.class }}">{{ tab.header }}</span>
           </ng-template>
           <aio-code class="{{ tab.class }}"
                     [language]="tab.language"
                     [linenums]="tab.linenums"
                     [path]="tab.path"
                     [region]="tab.region"
-                    [title]="tab.title">
+                    [header]="tab.header">
           </aio-code>
         </mat-tab>
       </mat-tab-group>
@@ -46,20 +47,27 @@ export interface TabInfo {
 export class CodeTabsComponent implements OnInit, AfterViewInit {
   tabs: TabInfo[];
 
-  @Input('linenums') linenums: string;
+  @Input() linenums: string | undefined;
 
-  @ViewChild('content') content;
+  @ViewChild('content', { static: true }) content: ElementRef<HTMLDivElement>;
 
   @ViewChildren(CodeComponent) codeComponents: QueryList<CodeComponent>;
 
   ngOnInit() {
     this.tabs = [];
-    const codeExamples = this.content.nativeElement.querySelectorAll('code-pane');
+    const contentElem = this.content.nativeElement;
+    const codeExamples = Array.from(contentElem.querySelectorAll('code-pane'));
 
-    for (let i = 0; i < codeExamples.length; i++) {
-      const tabContent = codeExamples[i];
+    for (const tabContent of codeExamples) {
       this.tabs.push(this.getTabInfo(tabContent));
     }
+
+    // Remove DOM nodes that are no longer needed.
+    //
+    // NOTE:
+    // In IE11, doing this also empties the `<code-pane>` nodes captured in `codeExamples` ¯\_(ツ)_/¯
+    // Only remove the unnecessary nodes after having captured the `<code-pane>` contents.
+    contentElem.innerHTML = '';
   }
 
   ngAfterViewInit() {
@@ -69,15 +77,16 @@ export class CodeTabsComponent implements OnInit, AfterViewInit {
   }
 
   /** Gets the extracted TabInfo data from the provided code-pane element. */
-  private getTabInfo(tabContent: HTMLElement): TabInfo {
+  private getTabInfo(tabContent: Element): TabInfo {
     return {
-      class: tabContent.getAttribute('class'),
+      class: tabContent.getAttribute('class') || '',
       code: tabContent.innerHTML,
-      language: tabContent.getAttribute('language'),
-      linenums: tabContent.getAttribute('linenums') || this.linenums,
       path: tabContent.getAttribute('path') || '',
       region: tabContent.getAttribute('region') || '',
-      title: tabContent.getAttribute('title')
+
+      header: tabContent.getAttribute('header') || undefined,
+      language: tabContent.getAttribute('language') || undefined,
+      linenums: tabContent.getAttribute('linenums') || this.linenums,
     };
   }
 }

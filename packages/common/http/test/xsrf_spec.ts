@@ -1,29 +1,34 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {HttpHandler} from '../src/backend';
-import {HttpHeaders} from '../src/headers';
-import {HttpRequest} from '../src/request';
-import {HttpXsrfCookieExtractor, HttpXsrfInterceptor} from '../src/xsrf';
+import {HttpHeaders} from '@angular/common/http/src/headers';
+import {HttpRequest} from '@angular/common/http/src/request';
+import {HttpXsrfCookieExtractor, HttpXsrfInterceptor, HttpXsrfTokenExtractor} from '@angular/common/http/src/xsrf';
 
-import {HttpClientTestingBackend} from '../testing/src/backend';
+import {HttpClientTestingBackend} from '@angular/common/http/testing/src/backend';
 
-class SampleTokenExtractor {
-  constructor(private token: string|null) {}
+class SampleTokenExtractor extends HttpXsrfTokenExtractor {
+  constructor(private token: string|null) {
+    super();
+  }
 
-  getToken(): string|null { return this.token; }
+  getToken(): string|null {
+    return this.token;
+  }
 }
 
 {
   describe('HttpXsrfInterceptor', () => {
     let backend: HttpClientTestingBackend;
     const interceptor = new HttpXsrfInterceptor(new SampleTokenExtractor('test'), 'X-XSRF-TOKEN');
-    beforeEach(() => { backend = new HttpClientTestingBackend(); });
+    beforeEach(() => {
+      backend = new HttpClientTestingBackend();
+    });
     it('applies XSRF protection to outgoing requests', () => {
       interceptor.intercept(new HttpRequest('POST', '/test', {}), backend).subscribe();
       const req = backend.expectOne('/test');
@@ -60,7 +65,9 @@ class SampleTokenExtractor {
       expect(req.request.headers.has('X-XSRF-TOKEN')).toEqual(false);
       req.flush({});
     });
-    afterEach(() => { backend.verify(); });
+    afterEach(() => {
+      backend.verify();
+    });
   });
   describe('HttpXsrfCookieExtractor', () => {
     let document: {[key: string]: string};
@@ -71,8 +78,9 @@ class SampleTokenExtractor {
       };
       extractor = new HttpXsrfCookieExtractor(document, 'browser', 'XSRF-TOKEN');
     });
-    it('parses the cookie from document.cookie',
-       () => { expect(extractor.getToken()).toEqual('test'); });
+    it('parses the cookie from document.cookie', () => {
+      expect(extractor.getToken()).toEqual('test');
+    });
     it('does not re-parse if document.cookie has not changed', () => {
       expect(extractor.getToken()).toEqual('test');
       expect(extractor.getToken()).toEqual('test');

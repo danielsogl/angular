@@ -1,22 +1,25 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {APP_BOOTSTRAP_LISTENER, APP_INITIALIZER, Compiler, CompilerFactory, Component, NgModule, NgZone, PlatformRef, TemplateRef, Type, ViewChild, ViewContainerRef} from '@angular/core';
+import {DOCUMENT, ɵgetDOM as getDOM} from '@angular/common';
+import {ResourceLoader} from '@angular/compiler';
+import {APP_BOOTSTRAP_LISTENER, APP_INITIALIZER, Compiler, CompilerFactory, Component, InjectionToken, LOCALE_ID, NgModule, NgZone, PlatformRef, TemplateRef, Type, ViewChild, ViewContainerRef} from '@angular/core';
 import {ApplicationRef} from '@angular/core/src/application_ref';
 import {ErrorHandler} from '@angular/core/src/error_handler';
 import {ComponentRef} from '@angular/core/src/linker/component_factory';
+import {getLocaleId} from '@angular/core/src/render3';
 import {BrowserModule} from '@angular/platform-browser';
-import {getDOM} from '@angular/platform-browser/src/dom/dom_adapter';
-import {DOCUMENT} from '@angular/platform-browser/src/dom/dom_tokens';
-import {dispatchEvent} from '@angular/platform-browser/testing/src/browser_util';
+import {createTemplate, dispatchEvent, getContent} from '@angular/platform-browser/testing/src/browser_util';
 import {expect} from '@angular/platform-browser/testing/src/matchers';
+import {onlyInIvy} from '@angular/private/testing';
+
 import {NoopNgZone} from '../src/zone/ng_zone';
-import {ComponentFixtureNoNgZone, TestBed, async, inject, withModule} from '../testing';
+import {ComponentFixtureNoNgZone, inject, TestBed, waitForAsync, withModule} from '../testing';
 
 @Component({selector: 'bootstrap-app', template: 'hello'})
 class SomeComponent {
@@ -26,26 +29,29 @@ class SomeComponent {
   describe('bootstrap', () => {
     let mockConsole: MockConsole;
 
-    beforeEach(() => { mockConsole = new MockConsole(); });
+    beforeEach(() => {
+      mockConsole = new MockConsole();
+    });
 
     function createRootEl(selector = 'bootstrap-app') {
-      const doc = TestBed.get(DOCUMENT);
-      const rootEl = <HTMLElement>getDOM().firstChild(
-          getDOM().content(getDOM().createTemplate(`<${selector}></${selector}>`)));
-      const oldRoots = getDOM().querySelectorAll(doc, selector);
+      const doc = TestBed.inject(DOCUMENT);
+      const rootEl =
+          <HTMLElement>getContent(createTemplate(`<${selector}></${selector}>`)).firstChild;
+      const oldRoots = doc.querySelectorAll(selector);
       for (let i = 0; i < oldRoots.length; i++) {
         getDOM().remove(oldRoots[i]);
       }
-      getDOM().appendChild(doc.body, rootEl);
+      doc.body.appendChild(rootEl);
     }
 
-    type CreateModuleOptions = {providers?: any[], ngDoBootstrap?: any, bootstrap?: any[]};
+    type CreateModuleOptions =
+        {providers?: any[], ngDoBootstrap?: any, bootstrap?: any[], component?: Type<any>};
 
     function createModule(providers?: any[]): Type<any>;
     function createModule(options: CreateModuleOptions): Type<any>;
-    function createModule(providersOrOptions: any[] | CreateModuleOptions | undefined): Type<any> {
+    function createModule(providersOrOptions: any[]|CreateModuleOptions|undefined): Type<any> {
       let options: CreateModuleOptions = {};
-      if (providersOrOptions instanceof Array) {
+      if (Array.isArray(providersOrOptions)) {
         options = {providers: providersOrOptions};
       } else {
         options = providersOrOptions || {};
@@ -53,15 +59,15 @@ class SomeComponent {
       const errorHandler = new ErrorHandler();
       (errorHandler as any)._console = mockConsole as any;
 
-      const platformModule = getDOM().supportsDOMEvents() ?
+      const platformModule = getDOM().supportsDOMEvents ?
           BrowserModule :
           require('@angular/platform-server').ServerModule;
 
       @NgModule({
         providers: [{provide: ErrorHandler, useValue: errorHandler}, options.providers || []],
         imports: [platformModule],
-        declarations: [SomeComponent],
-        entryComponents: [SomeComponent],
+        declarations: [options.component || SomeComponent],
+        entryComponents: [options.component || SomeComponent],
         bootstrap: options.bootstrap || []
       })
       class MyModule {
@@ -73,63 +79,71 @@ class SomeComponent {
     }
 
     it('should bootstrap a component from a child module',
-       async(inject([ApplicationRef, Compiler], (app: ApplicationRef, compiler: Compiler) => {
-         @Component({
-           selector: 'bootstrap-app',
-           template: '',
-         })
-         class SomeComponent {
-         }
+       waitForAsync(
+           inject([ApplicationRef, Compiler], (app: ApplicationRef, compiler: Compiler) => {
+             @Component({
+               selector: 'bootstrap-app',
+               template: '',
+             })
+             class SomeComponent {
+             }
 
-         @NgModule({
-           providers: [{provide: 'hello', useValue: 'component'}],
-           declarations: [SomeComponent],
-           entryComponents: [SomeComponent],
-         })
-         class SomeModule {
-         }
+             const helloToken = new InjectionToken<string>('hello');
 
-         createRootEl();
-         const modFactory = compiler.compileModuleSync(SomeModule);
-         const module = modFactory.create(TestBed);
-         const cmpFactory =
-             module.componentFactoryResolver.resolveComponentFactory(SomeComponent) !;
-         const component = app.bootstrap(cmpFactory);
+             @NgModule({
+               providers: [{provide: helloToken, useValue: 'component'}],
+               declarations: [SomeComponent],
+               entryComponents: [SomeComponent],
+             })
+             class SomeModule {
+             }
 
-         // The component should see the child module providers
-         expect(component.injector.get('hello')).toEqual('component');
-       })));
+             createRootEl();
+             const modFactory = compiler.compileModuleSync(SomeModule);
+             const module = modFactory.create(TestBed);
+             const cmpFactory =
+                 module.componentFactoryResolver.resolveComponentFactory(SomeComponent)!;
+             const component = app.bootstrap(cmpFactory);
+
+             // The component should see the child module providers
+             expect(component.injector.get(helloToken)).toEqual('component');
+           })));
 
     it('should bootstrap a component with a custom selector',
-       async(inject([ApplicationRef, Compiler], (app: ApplicationRef, compiler: Compiler) => {
-         @Component({
-           selector: 'bootstrap-app',
-           template: '',
-         })
-         class SomeComponent {
-         }
+       waitForAsync(
+           inject([ApplicationRef, Compiler], (app: ApplicationRef, compiler: Compiler) => {
+             @Component({
+               selector: 'bootstrap-app',
+               template: '',
+             })
+             class SomeComponent {
+             }
 
-         @NgModule({
-           providers: [{provide: 'hello', useValue: 'component'}],
-           declarations: [SomeComponent],
-           entryComponents: [SomeComponent],
-         })
-         class SomeModule {
-         }
+             const helloToken = new InjectionToken<string>('hello');
 
-         createRootEl('custom-selector');
-         const modFactory = compiler.compileModuleSync(SomeModule);
-         const module = modFactory.create(TestBed);
-         const cmpFactory =
-             module.componentFactoryResolver.resolveComponentFactory(SomeComponent) !;
-         const component = app.bootstrap(cmpFactory, 'custom-selector');
+             @NgModule({
+               providers: [{provide: helloToken, useValue: 'component'}],
+               declarations: [SomeComponent],
+               entryComponents: [SomeComponent],
+             })
+             class SomeModule {
+             }
 
-         // The component should see the child module providers
-         expect(component.injector.get('hello')).toEqual('component');
-       })));
+             createRootEl('custom-selector');
+             const modFactory = compiler.compileModuleSync(SomeModule);
+             const module = modFactory.create(TestBed);
+             const cmpFactory =
+                 module.componentFactoryResolver.resolveComponentFactory(SomeComponent)!;
+             const component = app.bootstrap(cmpFactory, 'custom-selector');
+
+             // The component should see the child module providers
+             expect(component.injector.get(helloToken)).toEqual('component');
+           })));
 
     describe('ApplicationRef', () => {
-      beforeEach(() => { TestBed.configureTestingModule({imports: [createModule()]}); });
+      beforeEach(() => {
+        TestBed.configureTestingModule({imports: [createModule()]});
+      });
 
       it('should throw when reentering tick', () => {
         @Component({template: '{{reenter()}}'})
@@ -152,7 +166,7 @@ class SomeComponent {
 
         const fixture = TestBed.configureTestingModule({declarations: [ReenteringComponent]})
                             .createComponent(ReenteringComponent);
-        const appRef = TestBed.get(ApplicationRef) as ApplicationRef;
+        const appRef = TestBed.inject(ApplicationRef);
         appRef.attachView(fixture.componentRef.hostView);
         appRef.tick();
         expect(fixture.componentInstance.reenterErr.message)
@@ -167,7 +181,9 @@ class SomeComponent {
             providers: [{
               provide: APP_BOOTSTRAP_LISTENER,
               multi: true,
-              useValue: (compRef: any) => { capturedCompRefs.push(compRef); }
+              useValue: (compRef: any) => {
+                capturedCompRefs.push(compRef);
+              }
             }]
           });
         });
@@ -204,9 +220,11 @@ class SomeComponent {
         defaultPlatform = _platform;
       }));
 
-      it('should wait for asynchronous app initializers', async(() => {
+      it('should wait for asynchronous app initializers', waitForAsync(() => {
            let resolve: (result: any) => void;
-           const promise: Promise<any> = new Promise((res) => { resolve = res; });
+           const promise: Promise<any> = new Promise((res) => {
+             resolve = res;
+           });
            let initializerDone = false;
            setTimeout(() => {
              resolve(true);
@@ -216,13 +234,21 @@ class SomeComponent {
            defaultPlatform
                .bootstrapModule(
                    createModule([{provide: APP_INITIALIZER, useValue: () => promise, multi: true}]))
-               .then(_ => { expect(initializerDone).toBe(true); });
+               .then(_ => {
+                 expect(initializerDone).toBe(true);
+               });
          }));
 
-      it('should rethrow sync errors even if the exceptionHandler is not rethrowing', async(() => {
+      it('should rethrow sync errors even if the exceptionHandler is not rethrowing',
+         waitForAsync(() => {
            defaultPlatform
-               .bootstrapModule(createModule(
-                   [{provide: APP_INITIALIZER, useValue: () => { throw 'Test'; }, multi: true}]))
+               .bootstrapModule(createModule([{
+                 provide: APP_INITIALIZER,
+                 useValue: () => {
+                   throw 'Test';
+                 },
+                 multi: true
+               }]))
                .then(() => expect(false).toBe(true), (e) => {
                  expect(e).toBe('Test');
                  // Error rethrown will be seen by the exception handler since it's after
@@ -232,7 +258,7 @@ class SomeComponent {
          }));
 
       it('should rethrow promise errors even if the exceptionHandler is not rethrowing',
-         async(() => {
+         waitForAsync(() => {
            defaultPlatform
                .bootstrapModule(createModule([
                  {provide: APP_INITIALIZER, useValue: () => Promise.reject('Test'), multi: true}
@@ -243,7 +269,7 @@ class SomeComponent {
                });
          }));
 
-      it('should throw useful error when ApplicationRef is not configured', async(() => {
+      it('should throw useful error when ApplicationRef is not configured', waitForAsync(() => {
            @NgModule()
            class EmptyModule {
            }
@@ -256,7 +282,7 @@ class SomeComponent {
          }));
 
       it('should call the `ngDoBootstrap` method with `ApplicationRef` on the main module',
-         async(() => {
+         waitForAsync(() => {
            const ngDoBootstrap = jasmine.createSpy('ngDoBootstrap');
            defaultPlatform.bootstrapModule(createModule({ngDoBootstrap: ngDoBootstrap}))
                .then((moduleRef) => {
@@ -265,7 +291,7 @@ class SomeComponent {
                });
          }));
 
-      it('should auto bootstrap components listed in @NgModule.bootstrap', async(() => {
+      it('should auto bootstrap components listed in @NgModule.bootstrap', waitForAsync(() => {
            defaultPlatform.bootstrapModule(createModule({bootstrap: [SomeComponent]}))
                .then((moduleRef) => {
                  const appRef: ApplicationRef = moduleRef.injector.get(ApplicationRef);
@@ -274,7 +300,7 @@ class SomeComponent {
          }));
 
       it('should error if neither `ngDoBootstrap` nor @NgModule.bootstrap was specified',
-         async(() => {
+         waitForAsync(() => {
            defaultPlatform.bootstrapModule(createModule({ngDoBootstrap: false}))
                .then(() => expect(false).toBe(true), (e) => {
                  const expectedErrMsg =
@@ -284,12 +310,12 @@ class SomeComponent {
                });
          }));
 
-      it('should add bootstrapped module into platform modules list', async(() => {
+      it('should add bootstrapped module into platform modules list', waitForAsync(() => {
            defaultPlatform.bootstrapModule(createModule({bootstrap: [SomeComponent]}))
                .then(module => expect((<any>defaultPlatform)._modules).toContain(module));
          }));
 
-      it('should bootstrap with NoopNgZone', async(() => {
+      it('should bootstrap with NoopNgZone', waitForAsync(() => {
            defaultPlatform
                .bootstrapModule(createModule({bootstrap: [SomeComponent]}), {ngZone: 'noop'})
                .then((module) => {
@@ -297,6 +323,56 @@ class SomeComponent {
                  expect(ngZone instanceof NoopNgZone).toBe(true);
                });
          }));
+
+      it('should resolve component resources when creating module factory', async () => {
+        @Component({
+          selector: 'with-templates-app',
+          templateUrl: '/test-template.html',
+        })
+        class WithTemplateUrlComponent {
+        }
+
+        const loadResourceSpy = jasmine.createSpy('load resource').and.returnValue('fakeContent');
+        const testModule = createModule({component: WithTemplateUrlComponent});
+
+        await defaultPlatform.bootstrapModule(testModule, {
+          providers: [
+            {provide: ResourceLoader, useValue: {get: loadResourceSpy}},
+          ]
+        });
+
+        expect(loadResourceSpy).toHaveBeenCalledTimes(1);
+        expect(loadResourceSpy).toHaveBeenCalledWith('/test-template.html');
+      });
+
+      onlyInIvy('We only need to define `LOCALE_ID` for runtime i18n')
+          .it('should define `LOCALE_ID`', async () => {
+            @Component({
+              selector: 'i18n-app',
+              templateUrl: '',
+            })
+            class I18nComponent {
+            }
+
+            const testModule = createModule(
+                {component: I18nComponent, providers: [{provide: LOCALE_ID, useValue: 'ro'}]});
+            await defaultPlatform.bootstrapModule(testModule);
+
+            expect(getLocaleId()).toEqual('ro');
+          });
+
+      it('should wait for APP_INITIALIZER to set providers for `LOCALE_ID`', async () => {
+        let locale: string = '';
+
+        const testModule = createModule({
+          providers: [
+            {provide: APP_INITIALIZER, useValue: () => locale = 'fr-FR', multi: true},
+            {provide: LOCALE_ID, useFactory: () => locale}
+          ]
+        });
+        const app = await defaultPlatform.bootstrapModule(testModule);
+        expect(app.injector.get(LOCALE_ID)).toEqual('fr-FR');
+      });
     });
 
     describe('bootstrapModuleFactory', () => {
@@ -305,9 +381,11 @@ class SomeComponent {
         createRootEl();
         defaultPlatform = _platform;
       }));
-      it('should wait for asynchronous app initializers', async(() => {
+      it('should wait for asynchronous app initializers', waitForAsync(() => {
            let resolve: (result: any) => void;
-           const promise: Promise<any> = new Promise((res) => { resolve = res; });
+           const promise: Promise<any> = new Promise((res) => {
+             resolve = res;
+           });
            let initializerDone = false;
            setTimeout(() => {
              resolve(true);
@@ -315,7 +393,7 @@ class SomeComponent {
            }, 1);
 
            const compilerFactory: CompilerFactory =
-               defaultPlatform.injector.get(CompilerFactory, null);
+               defaultPlatform.injector.get(CompilerFactory, null)!;
            const moduleFactory = compilerFactory.createCompiler().compileModuleSync(
                createModule([{provide: APP_INITIALIZER, useValue: () => promise, multi: true}]));
            defaultPlatform.bootstrapModuleFactory(moduleFactory).then(_ => {
@@ -323,11 +401,17 @@ class SomeComponent {
            });
          }));
 
-      it('should rethrow sync errors even if the exceptionHandler is not rethrowing', async(() => {
+      it('should rethrow sync errors even if the exceptionHandler is not rethrowing',
+         waitForAsync(() => {
            const compilerFactory: CompilerFactory =
-               defaultPlatform.injector.get(CompilerFactory, null);
-           const moduleFactory = compilerFactory.createCompiler().compileModuleSync(createModule(
-               [{provide: APP_INITIALIZER, useValue: () => { throw 'Test'; }, multi: true}]));
+               defaultPlatform.injector.get(CompilerFactory, null)!;
+           const moduleFactory = compilerFactory.createCompiler().compileModuleSync(createModule([{
+             provide: APP_INITIALIZER,
+             useValue: () => {
+               throw 'Test';
+             },
+             multi: true
+           }]));
            expect(() => defaultPlatform.bootstrapModuleFactory(moduleFactory)).toThrow('Test');
            // Error rethrown will be seen by the exception handler since it's after
            // construction.
@@ -335,9 +419,9 @@ class SomeComponent {
          }));
 
       it('should rethrow promise errors even if the exceptionHandler is not rethrowing',
-         async(() => {
+         waitForAsync(() => {
            const compilerFactory: CompilerFactory =
-               defaultPlatform.injector.get(CompilerFactory, null);
+               defaultPlatform.injector.get(CompilerFactory, null)!;
            const moduleFactory = compilerFactory.createCompiler().compileModuleSync(createModule(
                [{provide: APP_INITIALIZER, useValue: () => Promise.reject('Test'), multi: true}]));
            defaultPlatform.bootstrapModuleFactory(moduleFactory)
@@ -357,15 +441,13 @@ class SomeComponent {
       @Component({template: '<ng-container #vc></ng-container>'})
       class ContainerComp {
         // TODO(issue/24571): remove '!'.
-        @ViewChild('vc', {read: ViewContainerRef})
-        vc !: ViewContainerRef;
+        @ViewChild('vc', {read: ViewContainerRef}) vc!: ViewContainerRef;
       }
 
       @Component({template: '<ng-template #t>Dynamic content</ng-template>'})
       class EmbeddedViewComp {
         // TODO(issue/24571): remove '!'.
-        @ViewChild(TemplateRef)
-        tplRef !: TemplateRef<Object>;
+        @ViewChild(TemplateRef, {static: true}) tplRef!: TemplateRef<Object>;
       }
 
       beforeEach(() => {
@@ -377,7 +459,7 @@ class SomeComponent {
 
       it('should dirty check attached views', () => {
         const comp = TestBed.createComponent(MyComp);
-        const appRef: ApplicationRef = TestBed.get(ApplicationRef);
+        const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
         expect(appRef.viewCount).toBe(0);
 
         appRef.tick();
@@ -391,7 +473,7 @@ class SomeComponent {
 
       it('should not dirty check detached views', () => {
         const comp = TestBed.createComponent(MyComp);
-        const appRef: ApplicationRef = TestBed.get(ApplicationRef);
+        const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
 
         appRef.attachView(comp.componentRef.hostView);
         appRef.tick();
@@ -406,7 +488,7 @@ class SomeComponent {
 
       it('should detach attached views if they are destroyed', () => {
         const comp = TestBed.createComponent(MyComp);
-        const appRef: ApplicationRef = TestBed.get(ApplicationRef);
+        const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
 
         appRef.attachView(comp.componentRef.hostView);
         comp.destroy();
@@ -416,7 +498,8 @@ class SomeComponent {
 
       it('should detach attached embedded views if they are destroyed', () => {
         const comp = TestBed.createComponent(EmbeddedViewComp);
-        const appRef: ApplicationRef = TestBed.get(ApplicationRef);
+        const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
+
         const embeddedViewRef = comp.componentInstance.tplRef.createEmbeddedView({});
 
         appRef.attachView(embeddedViewRef);
@@ -425,6 +508,7 @@ class SomeComponent {
         expect(appRef.viewCount).toBe(0);
       });
 
+
       it('should not allow to attach a view to both, a view container and the ApplicationRef',
          () => {
            const comp = TestBed.createComponent(MyComp);
@@ -432,12 +516,12 @@ class SomeComponent {
            const containerComp = TestBed.createComponent(ContainerComp);
            containerComp.detectChanges();
            const vc = containerComp.componentInstance.vc;
-           const appRef: ApplicationRef = TestBed.get(ApplicationRef);
+           const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
 
            vc.insert(hostView);
            expect(() => appRef.attachView(hostView))
                .toThrowError('This view is already attached to a ViewContainer!');
-           hostView = vc.detach(0) !;
+           hostView = vc.detach(0)!;
 
            appRef.attachView(hostView);
            expect(() => vc.insert(hostView))
@@ -456,7 +540,9 @@ class SomeComponent {
     class ClickComp {
       text: string = '1';
 
-      onClick() { this.text += '1'; }
+      onClick() {
+        this.text += '1';
+      }
     }
 
     @Component({selector: 'micro-task-comp', template: `<span>{{text}}</span>`})
@@ -464,7 +550,9 @@ class SomeComponent {
       text: string = '1';
 
       ngOnInit() {
-        Promise.resolve(null).then((_) => { this.text += '1'; });
+        Promise.resolve(null).then((_) => {
+          this.text += '1';
+        });
       }
     }
 
@@ -473,7 +561,9 @@ class SomeComponent {
       text: string = '1';
 
       ngOnInit() {
-        setTimeout(() => { this.text += '1'; }, 10);
+        setTimeout(() => {
+          this.text += '1';
+        }, 10);
       }
     }
 
@@ -484,7 +574,9 @@ class SomeComponent {
       ngOnInit() {
         Promise.resolve(null).then((_) => {
           this.text += '1';
-          setTimeout(() => { this.text += '1'; }, 10);
+          setTimeout(() => {
+            this.text += '1';
+          }, 10);
         });
       }
     }
@@ -496,7 +588,9 @@ class SomeComponent {
       ngOnInit() {
         setTimeout(() => {
           this.text += '1';
-          Promise.resolve(null).then((_: any) => { this.text += '1'; });
+          Promise.resolve(null).then((_: any) => {
+            this.text += '1';
+          });
         }, 10);
       }
     }
@@ -512,12 +606,14 @@ class SomeComponent {
       });
     });
 
-    afterEach(() => { expect(stableCalled).toBe(true, 'isStable did not emit true on stable'); });
+    afterEach(() => {
+      expect(stableCalled).toBe(true, 'isStable did not emit true on stable');
+    });
 
     function expectStableTexts(component: Type<any>, expected: string[]) {
       const fixture = TestBed.createComponent(component);
-      const appRef: ApplicationRef = TestBed.get(ApplicationRef);
-      const zone: NgZone = TestBed.get(NgZone);
+      const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
+      const zone: NgZone = TestBed.inject(NgZone);
       appRef.attachView(fixture.componentRef.hostView);
       zone.run(() => appRef.tick());
 
@@ -533,26 +629,34 @@ class SomeComponent {
       });
     }
 
-    it('isStable should fire on synchronous component loading',
-       async(() => { expectStableTexts(SyncComp, ['1']); }));
+    it('isStable should fire on synchronous component loading', waitForAsync(() => {
+         expectStableTexts(SyncComp, ['1']);
+       }));
 
-    it('isStable should fire after a microtask on init is completed',
-       async(() => { expectStableTexts(MicroTaskComp, ['11']); }));
+    it('isStable should fire after a microtask on init is completed', waitForAsync(() => {
+         expectStableTexts(MicroTaskComp, ['11']);
+       }));
 
-    it('isStable should fire after a macrotask on init is completed',
-       async(() => { expectStableTexts(MacroTaskComp, ['11']); }));
+    it('isStable should fire after a macrotask on init is completed', waitForAsync(() => {
+         expectStableTexts(MacroTaskComp, ['11']);
+       }));
 
     it('isStable should fire only after chain of micro and macrotasks on init are completed',
-       async(() => { expectStableTexts(MicroMacroTaskComp, ['111']); }));
+       waitForAsync(() => {
+         expectStableTexts(MicroMacroTaskComp, ['111']);
+       }));
 
     it('isStable should fire only after chain of macro and microtasks on init are completed',
-       async(() => { expectStableTexts(MacroMicroTaskComp, ['111']); }));
+       waitForAsync(() => {
+         expectStableTexts(MacroMicroTaskComp, ['111']);
+       }));
 
     describe('unstable', () => {
       let unstableCalled = false;
 
-      afterEach(
-          () => { expect(unstableCalled).toBe(true, 'isStable did not emit false on unstable'); });
+      afterEach(() => {
+        expect(unstableCalled).toBe(true, 'isStable did not emit false on unstable');
+      });
 
       function expectUnstable(appRef: ApplicationRef) {
         appRef.isStable.subscribe({
@@ -567,10 +671,10 @@ class SomeComponent {
         });
       }
 
-      it('should be fired after app becomes unstable', async(() => {
+      it('should be fired after app becomes unstable', waitForAsync(() => {
            const fixture = TestBed.createComponent(ClickComp);
-           const appRef: ApplicationRef = TestBed.get(ApplicationRef);
-           const zone: NgZone = TestBed.get(NgZone);
+           const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
+           const zone: NgZone = TestBed.inject(NgZone);
            appRef.attachView(fixture.componentRef.hostView);
            zone.run(() => appRef.tick());
 

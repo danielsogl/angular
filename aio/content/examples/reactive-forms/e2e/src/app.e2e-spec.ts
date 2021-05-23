@@ -1,18 +1,14 @@
-'use strict'; // necessary for es6 output in node
-
 import { browser, element, by } from 'protractor';
 
-describe('Reactive forms', function () {
+describe('Reactive forms', () => {
   const nameEditor = element(by.css('app-name-editor'));
   const profileEditor = element(by.css('app-profile-editor'));
   const nameEditorLink = element(by.cssContainingText('app-root > nav > a', 'Name Editor'));
   const profileEditorLink = element(by.cssContainingText('app-root > nav > a', 'Profile Editor'));
 
-  beforeAll(function () {
-    browser.get('');
-  });
+  beforeAll(() => browser.get(''));
 
-  describe('Name Editor', function () {
+  describe('Name Editor', () => {
     const nameInput = nameEditor.element(by.css('input'));
     const updateButton = nameEditor.element(by.buttonText('Update Name'));
     const nameText = 'John Smith';
@@ -35,14 +31,14 @@ describe('Reactive forms', function () {
 
     it('should update the name control when the Update Name button is clicked', async () => {
       await nameInput.sendKeys(nameText);
-      const value = await nameInput.getAttribute('value');
+      const value1 = await nameInput.getAttribute('value');
 
-      expect(value).toBe(nameText);
+      expect(value1).toBe(nameText);
       await updateButton.click();
 
-      const value = await nameInput.getAttribute('value');
+      const value2 = await nameInput.getAttribute('value');
 
-      expect(value).toBe('Nancy');
+      expect(value2).toBe('Nancy');
     });
 
     it('should update the displayed control value when the name control updated', async () => {
@@ -55,13 +51,12 @@ describe('Reactive forms', function () {
     });
   });
 
-  describe('Profile Editor', function () {
+  describe('Profile Editor', () => {
     const firstNameInput = getInput('firstName');
-    const lastNameInput = getInput('lastName');
     const streetInput = getInput('street');
     const addAliasButton = element(by.buttonText('Add Alias'));
     const updateButton = profileEditor.element(by.buttonText('Update Profile'));
-    const profile = {
+    const profile: Record<string, string | number> = {
       firstName: 'John',
       lastName: 'Smith',
       street: '345 South Lane',
@@ -119,7 +114,7 @@ describe('Reactive forms', function () {
 
     it('should update the displayed form value when form inputs are updated', async () => {
       const aliasText = 'Johnny';
-      const inputs = await Promise.all(
+      await Promise.all(
         Object.keys(profile)
           .map(key =>
             getInput(key).sendKeys(`${profile[key]}`)

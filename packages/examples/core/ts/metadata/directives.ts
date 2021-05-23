@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 /* tslint:disable:no-console  */
-import {Component, Directive, EventEmitter} from '@angular/core';
+import {Component, Directive, EventEmitter, NgModule} from '@angular/core';
 
 // #docregion component-input
 @Component({
@@ -60,7 +60,17 @@ export class IntervalDirComponent {
   `
 })
 export class MyOutputComponent {
-  onEverySecond() { console.log('second'); }
-  onEveryFiveSeconds() { console.log('five seconds'); }
+  onEverySecond() {
+    console.log('second');
+  }
+  onEveryFiveSeconds() {
+    console.log('five seconds');
+  }
 }
 // #enddocregion component-output-interval
+
+@NgModule({
+  declarations: [BankAccountComponent, MyInputComponent, IntervalDirComponent, MyOutputComponent]
+})
+export class AppModule {
+}

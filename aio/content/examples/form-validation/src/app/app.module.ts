@@ -1,13 +1,14 @@
 // #docregion
-import { NgModule }      from '@angular/core';
+import { NgModule } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { BrowserModule } from '@angular/platform-browser';
 
-import { AppComponent }           from './app.component';
+import { AppComponent } from './app.component';
 import { HeroFormTemplateComponent } from './template/hero-form-template.component';
 import { HeroFormReactiveComponent } from './reactive/hero-form-reactive.component';
 import { ForbiddenValidatorDirective } from './shared/forbidden-name.directive';
 import { IdentityRevealedValidatorDirective } from './shared/identity-revealed.directive';
+import { UniqueAlterEgoValidatorDirective } from './shared/alter-ego.directive';
 
 @NgModule({
   imports: [
@@ -20,7 +21,8 @@ import { IdentityRevealedValidatorDirective } from './shared/identity-revealed.d
     HeroFormTemplateComponent,
     HeroFormReactiveComponent,
     ForbiddenValidatorDirective,
-    IdentityRevealedValidatorDirective
+    IdentityRevealedValidatorDirective,
+    UniqueAlterEgoValidatorDirective
   ],
   bootstrap:    [ AppComponent ]
 })

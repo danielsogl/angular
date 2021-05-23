@@ -1,26 +1,19 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-
-import * as path from 'path';
-
-const TS_DTS_EXTENSION = /(\.d)?\.ts$/;
+import {dirname, relative, resolve, toRelativeImport} from '../../file_system';
+import {stripExtension} from '../../file_system/src/util';
 
 export function relativePathBetween(from: string, to: string): string|null {
-  let relative = path.posix.relative(path.dirname(from), to).replace(TS_DTS_EXTENSION, '');
+  const relativePath = stripExtension(relative(dirname(resolve(from)), resolve(to)));
+  return relativePath !== '' ? toRelativeImport(relativePath) : null;
+}
 
-  if (relative === '') {
-    return null;
-  }
-
-  // path.relative() does not include the leading './'.
-  if (!relative.startsWith('.')) {
-    relative = `./${relative}`;
-  }
-
-  return relative;
+export function normalizeSeparators(path: string): string {
+  // TODO: normalize path only for OS that need it.
+  return path.replace(/\\/g, '/');
 }

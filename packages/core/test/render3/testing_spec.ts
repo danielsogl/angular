@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {withBody} from '@angular/core/testing';
+import {withBody} from '@angular/private/testing';
 
 describe('testing', () => {
   describe('withBody', () => {
@@ -24,7 +24,7 @@ describe('testing', () => {
          return Promise.resolve(true).then(() => passed = true);
        }));
 
-    it('should support async and await', withBody('<span>works!</span>', async() => {
+    it('should support async and await', withBody('<span>works!</span>', async () => {
          await Promise.resolve(true);
          passed = true;
        }));

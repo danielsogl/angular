@@ -1,12 +1,8 @@
-'use strict'; // necessary for es6 output in node
-
 import { browser, element, by } from 'protractor';
 
-describe('NgModule-example', function () {
+describe('NgModule-example', () => {
 
   // helpers
-  const gold = 'rgba(255, 215, 0, 1)';
-  const powderblue = 'rgba(176, 224, 230, 1)';
   const lightgray = 'rgba(239, 238, 237, 1)';
   const white = 'rgba(0, 0, 0, 0)';
 
@@ -15,7 +11,7 @@ describe('NgModule-example', function () {
 
     return {
       title: element.all(by.tagName('h1')).get(0),
-      subtitle: element.all(by.css('app-title p i')).get(0),
+      subtitle: element.all(by.css('app-root p i')).get(0),
       contactButton: buttons.get(0),
       itemButton: buttons.get(1),
       customersButton: buttons.get(2)
@@ -59,165 +55,112 @@ describe('NgModule-example', function () {
 
   // tests
   function appTitleTests(color: string, name?: string) {
-    return function() {
-      it('should have a gray header', function() {
+    return () => {
+      it('should have a gray header', async () => {
         const commons = getCommonsSectionStruct();
-        expect(commons.title.getCssValue('backgroundColor')).toBe(color);
+        expect(await commons.title.getCssValue('backgroundColor')).toBe(color);
       });
 
-      it('should welcome us', function () {
+      it('should welcome us', async () => {
         const commons = getCommonsSectionStruct();
-        expect(commons.subtitle.getText()).toBe('Welcome, ' + (name ||  'Sherlock Holmes'));
+        expect(await commons.subtitle.getText()).toBe(`Welcome, ${name || 'Miss Marple'}`);
       });
     };
   }
 
   function contactTests(color: string, name?: string) {
-    return function() {
-      it('shows the contact\'s owner', function() {
+    return () => {
+      it('shows the contact\'s owner', async () => {
         const contacts = getContactSectionStruct();
-        expect(contacts.header.getText()).toBe('Contact of ' + (name ||  'Sherlock Holmes'));
+        expect(await contacts.header.getText()).toBe(`${name || 'Miss Marple'}'s Contacts`);
       });
 
-      it('can cycle between contacts', function () {
+      it('can cycle between contacts', async () => {
         const contacts = getContactSectionStruct();
         const nextButton = contacts.nextContactButton;
-        expect(contacts.contactNameHeader.getText()).toBe('Awesome Yasha');
-        expect(contacts.contactNameHeader.getCssValue('backgroundColor')).toBe(color);
-        nextButton.click().then(function () {
-          expect(contacts.contactNameHeader.getText()).toBe('Awesome Iulia');
-          return nextButton.click();
-        }).then(function () {
-          expect(contacts.contactNameHeader.getText()).toBe('Awesome Karina');
-        });
+        expect(await contacts.contactNameHeader.getText()).toBe('Awesome Yasha');
+        expect(await contacts.contactNameHeader.getCssValue('backgroundColor')).toBe(color);
+
+        await nextButton.click();
+        expect(await contacts.contactNameHeader.getText()).toBe('Awesome Iulia');
+
+        await nextButton.click();
+        expect(await contacts.contactNameHeader.getText()).toBe('Awesome Karina');
       });
 
-      it('can change an existing contact', function () {
-        const contacts = getContactSectionStruct();
-        contacts.input.sendKeys('a');
-        expect(contacts.input.getCssValue('backgroundColor')).toBe(color);
-        expect(contacts.contactNameHeader.getText()).toBe('Awesome Yashaa');
-      });
-
-      it('can create a new contact', function () {
+      it('can create a new contact', async () => {
         const contacts = getContactSectionStruct();
         const newContactButton = contacts.newContactButton;
-        newContactButton.click().then(function () {
-          expect(contacts.validationError.getText()).toBe('Name is required');
-          contacts.input.sendKeys('John Doe');
-          expect(contacts.contactNameHeader.getText()).toBe('Awesome John Doe');
-          expect(contacts.validationError.getText()).toBe('');
-        });
+        const nextButton = contacts.nextContactButton;
+        const input = contacts.input;
+        const saveButton = contacts.saveButton;
+
+        await newContactButton.click();
+        await input.click();
+        await nextButton.click();
+        expect(await contacts.validationError.getText()).toBe('Name is required.');
+
+        await input.click();
+        await contacts.input.sendKeys('Watson');
+        await saveButton.click();
+        expect(await contacts.contactNameHeader.getText()).toBe('Awesome Watson');
       });
     };
   }
 
-  describe('index.html', function () {
-    beforeEach(function () {
-      browser.get('');
-    });
+  describe('index.html', () => {
+    beforeEach(() => browser.get(''));
 
     describe('app-title', appTitleTests(white, 'Miss Marple'));
 
     describe('contact', contactTests(lightgray, 'Miss Marple'));
 
-    describe('item center', function () {
-      beforeEach(function () {
-        getCommonsSectionStruct().itemButton.click();
+    describe('item center', () => {
+      beforeEach(() => getCommonsSectionStruct().itemButton.click());
+
+      it('shows a list of items', async () => {
+        const item = getItemSectionStruct();
+        expect(await item.title.getText()).toBe('Items List');
+        expect(await item.items.count()).toBe(4);
+        expect(await item.items.get(0).getText()).toBe('1 - Sticky notes');
       });
 
-      it('shows a list of items', function () {
+      it('can navigate to one item details', async () => {
         const item = getItemSectionStruct();
-        expect(item.title.getText()).toBe('Items List');
-        expect(item.items.count()).toBe(4);
-        expect(item.items.get(0).getText()).toBe('1 - Sticky notes');
-      });
 
-      it('can navigate to one item details', function () {
-        const item = getItemSectionStruct();
-        item.items.get(0).click().then(function() {
-          expect(item.itemId.getText()).toBe('Item id: 1');
-          return item.listLink.click();
-        }).then(function () {
-          // We are back to the list
-          expect(item.items.count()).toBe(4);
-        });
+        await item.items.get(0).click();
+        expect(await item.itemId.getText()).toBe('Item id: 1');
+
+        await item.listLink.click();
+        // We are back to the list
+        expect(await item.items.count()).toBe(4);
       });
     });
 
-    describe('customers', function () {
-      beforeEach(function () {
-        getCommonsSectionStruct().customersButton.click();
+    describe('customers', () => {
+      beforeEach(() => getCommonsSectionStruct().customersButton.click());
+
+      it('shows a list of customers', async () => {
+        const customers = getCustomersSectionStruct();
+        expect(await customers.header.getText()).toBe('Customers of Miss Marple times 2');
+        expect(await customers.title.getText()).toBe('Customer List');
+        expect(await customers.items.count()).toBe(6);
+        expect(await customers.items.get(0).getText()).toBe('11 - Julian');
       });
 
-      it('shows a list of customers', function() {
+      it('can navigate and edit one customer details', async () => {
         const customers = getCustomersSectionStruct();
-        expect(customers.header.getText()).toBe('Customers of Miss Marple times 2');
-        expect(customers.title.getText()).toBe('Customer List');
-        expect(customers.items.count()).toBe(6);
-        expect(customers.items.get(0).getText()).toBe('11 - Julian');
-      });
 
-      it('can navigate and edit one customer details', function () {
-        const customers = getCustomersSectionStruct();
-        customers.items.get(0).click().then(function () {
-          expect(customers.itemId.getText()).toBe('Id: 11');
-          customers.itemInput.sendKeys(' try');
-          return customers.listLink.click();
-        }).then(function () {
-          // We are back to the list
-          expect(customers.items.count()).toBe(6);
-          expect(customers.items.get(0).getText()).toBe('11 - Julian try');
-        });
+        await customers.items.get(0).click();
+        expect(await customers.itemId.getText()).toBe('Id: 11');
+
+        await customers.itemInput.sendKeys(' try');
+        await customers.listLink.click();
+        // We are back to the list
+        expect(await customers.items.count()).toBe(6);
+        expect(await customers.items.get(0).getText()).toBe('11 - Julian try');
       });
     });
   });
-
-  // describe('index.0.html', function() {
-  //   beforeEach(function () {
-  //     browser.get('index.0.html');
-  //   });
-
-  //   it('has a title', function () {
-  //     const title = element.all(by.tagName('h1')).get(0);
-  //     expect(title.getText()).toBe('Minimal NgModule');
-  //   });
-  // });
-
-  // describe('index.1.html', function () {
-  //   beforeEach(function () {
-  //     browser.get('index.1.html');
-  //   });
-
-  //   describe('app-title', appTitleTests(powderblue));
-  // });
-
-  // describe('index.1b.html', function () {
-  //   beforeEach(function () {
-  //     browser.get('index.1b.html');
-  //   });
-
-  //   describe('app-title', appTitleTests(powderblue));
-
-  //   describe('contact', contactTests(powderblue));
-  // });
-
-  // describe('index.2.html', function () {
-  //   beforeEach(function () {
-  //     browser.get('index.2.html');
-  //   });
-
-  //   describe('app-title', appTitleTests(gold));
-
-  //   describe('contact', contactTests(powderblue));
-  // });
-
-  // describe('index.3.html', function () {
-  //   beforeEach(function () {
-  //     browser.get('index.3.html');
-  //   });
-
-  //   describe('app-title', appTitleTests(gold));
-  // });
 
 });

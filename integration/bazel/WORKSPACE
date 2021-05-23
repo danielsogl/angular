@@ -1,91 +1,66 @@
 workspace(name = "bazel_integration_test")
 
-#
-# Download Bazel toolchain dependencies as needed by build actions
-#
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# Fetch rules_nodejs so we can install our npm dependencies
 http_archive(
     name = "build_bazel_rules_nodejs",
-    url = "https://github.com/bazelbuild/rules_nodejs/archive/0.10.1.zip",
-    strip_prefix = "rules_nodejs-0.10.1",
-    sha256 = "634206524d90dc03c52392fa3f19a16637d2bcf154910436fe1d669a0d9d7b9c",
+    sha256 = "10f534e1c80f795cffe1f2822becd4897754d18564612510c59b3c73544ae7c6",
+    urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/3.5.0/rules_nodejs-3.5.0.tar.gz"],
 )
 
-http_archive(
-    name = "io_bazel_rules_webtesting",
-    url = "https://github.com/bazelbuild/rules_webtesting/archive/8fd9ce0fd9254bde251da0bc373d6cd08e811434.zip",
-    strip_prefix = "rules_webtesting-8fd9ce0fd9254bde251da0bc373d6cd08e811434",
-    sha256 = "4baee95fcfadfbaf868707af8accfd1cb98c5d13f808908e0152468bfb47f0f7",
-)
-
-http_archive(
-    name = "build_bazel_rules_typescript",
-    url = "https://github.com/bazelbuild/rules_typescript/archive/0.15.0.zip",
-    strip_prefix = "rules_typescript-0.15.0",
-    sha256 = "1aa75917330b820cb239b3c10a936a10f0a46fe215063d4492dd76dc6e1616f4",
-)
-
-http_archive(
-    name = "io_bazel_rules_go",
-    url = "https://github.com/bazelbuild/rules_go/releases/download/0.11.0/rules_go-0.11.0.tar.gz",
-    sha256 = "f70c35a8c779bb92f7521ecb5a1c6604e9c3edd431e50b6376d7497abc8ad3c1",
-)
-
+# Fetch sass rules for compiling sass files
 http_archive(
     name = "io_bazel_rules_sass",
-    url = "https://github.com/bazelbuild/rules_sass/archive/0.1.0.zip",
-    strip_prefix = "rules_sass-0.1.0",
-    sha256 = "b243c4d64f054c174051785862ab079050d90b37a1cef7da93821c6981cb9ad4",
+    sha256 = "7e5966078b4d7d04929ffcce96c3d2cbb2f9d510aed85cb1d7419cc54c97989c",
+    strip_prefix = "rules_sass-1.33.0",
+    urls = [
+        "https://github.com/bazelbuild/rules_sass/archive/1.33.0.zip",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_sass/archive/1.33.0.zip",
+    ],
 )
 
-#
-# Load and install our dependencies downloaded above.
-#
+# Check the bazel version and download npm dependencies
+load("@build_bazel_rules_nodejs//:index.bzl", "node_repositories", "yarn_install")
 
-load("@build_bazel_rules_nodejs//:defs.bzl", "check_bazel_version", "node_repositories")
+# Setup the Node.js toolchain
+node_repositories(
+    # Use same node version as root angular WORKSPACE since
+    node_version = "14.16.1",
+    yarn_version = "1.12.1",
+)
 
-check_bazel_version("0.15.0")
-node_repositories(package_json = ["//:package.json"])
+# Install our npm dependencies into @npm
+yarn_install(
+    name = "npm",
+    frozen_lockfile = False,
+    package_json = "//:package.json",
+    # Turn off symlink_node_modules here as it causes flakiness with missing
+    # files in node_modules.
+    # TODO: track down the root cause of the flakiness; current suspect is that
+    # it is an issue with managed_directories when resources are limited
+    symlink_node_modules = False,
+    yarn_lock = "//:yarn.lock",
+)
 
-load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
+# Load protractor dependencies
+load("@npm//@bazel/protractor:package.bzl", "npm_bazel_protractor_dependencies")
 
-go_rules_dependencies()
-go_register_toolchains()
+npm_bazel_protractor_dependencies()
 
-load("@io_bazel_rules_webtesting//web:repositories.bzl", "browser_repositories", "web_test_repositories")
+# Setup the rules_webtesting toolchain
+load("@io_bazel_rules_webtesting//web:repositories.bzl", "web_test_repositories")
 
 web_test_repositories()
+
+load("@io_bazel_rules_webtesting//web/versioned:browsers-0.3.2.bzl", "browser_repositories")
+
 browser_repositories(
     chromium = True,
     firefox = True,
 )
 
-load("@build_bazel_rules_typescript//:defs.bzl", "ts_setup_workspace")
-
-ts_setup_workspace()
-
-load("@io_bazel_rules_sass//sass:sass_repositories.bzl", "sass_repositories")
+# Setup the rules_sass toolchain
+load("@io_bazel_rules_sass//:defs.bzl", "sass_repositories")
 
 sass_repositories()
-
-#
-# Point Bazel to WORKSPACEs that live in subdirectories
-#
-
-local_repository(
-    name = "angular",
-    path = "node_modules/@angular/bazel",
-)
-
-local_repository(
-    name = "rxjs",
-    path = "node_modules/rxjs/src",
-)
-
-#
-# Load and install our dependencies from local repositories
-#
-
-load("@angular//:index.bzl", "ng_setup_workspace")
-
-ng_setup_workspace()

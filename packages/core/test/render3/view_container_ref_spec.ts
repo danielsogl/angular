@@ -1,237 +1,98 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Component, Directive, EmbeddedViewRef, Pipe, PipeTransform, TemplateRef, ViewContainerRef} from '../../src/core';
-import {getOrCreateNodeInjectorForNode, getOrCreateTemplateRef} from '../../src/render3/di';
-import {NgOnChangesFeature, defineComponent, defineDirective, definePipe, injectTemplateRef, injectViewContainerRef} from '../../src/render3/index';
-import {bind, container, containerRefreshEnd, containerRefreshStart, elementEnd, elementProperty, elementStart, embeddedViewEnd, embeddedViewStart, interpolation1, load, loadDirective, projection, projectionDef, reserveSlots, text, textBinding} from '../../src/render3/instructions';
+import {QueryFlags} from '@angular/core/src/render3/interfaces/query';
+import {HEADER_OFFSET} from '@angular/core/src/render3/interfaces/view';
+import {ChangeDetectorRef, Component as _Component, ComponentFactoryResolver, ElementRef, QueryList, TemplateRef, ViewContainerRef, ViewRef} from '../../src/core';
+import {ViewEncapsulation} from '../../src/metadata';
+import {injectComponentFactoryResolver, ɵɵdefineComponent, ɵɵdefineDirective, ɵɵlistener, ɵɵloadQuery, ɵɵqueryRefresh, ɵɵviewQuery} from '../../src/render3/index';
+import {ɵɵdirectiveInject, ɵɵelement, ɵɵelementEnd, ɵɵelementStart, ɵɵtemplate, ɵɵtext} from '../../src/render3/instructions/all';
 import {RenderFlags} from '../../src/render3/interfaces/definition';
-import {pipe, pipeBind1} from '../../src/render3/pipe';
+import {RElement} from '../../src/render3/interfaces/renderer_dom';
+import {getLView} from '../../src/render3/state';
+import {getNativeByIndex} from '../../src/render3/util/view_utils';
+import {ComponentFixture, createComponent, TemplateFixture} from './render_util';
 
-import {getRendererFactory2} from './imported_renderer2';
-import {ComponentFixture, TemplateFixture, createComponent} from './render_util';
+
+const Component: typeof _Component = function(...args: any[]): any {
+  // In test we use @Component for documentation only so it's safe to mock out the implementation.
+  return () => undefined;
+} as any;
+
 
 describe('ViewContainerRef', () => {
   let directiveInstance: DirectiveWithVCRef|null;
 
-  beforeEach(() => { directiveInstance = null; });
+  beforeEach(() => directiveInstance = null);
 
   class DirectiveWithVCRef {
-    static ngDirectiveDef = defineDirective({
-      type: DirectiveWithVCRef,
-      selectors: [['', 'vcref', '']],
-      factory: () => directiveInstance = new DirectiveWithVCRef(injectViewContainerRef()),
-      inputs: {tplRef: 'tplRef'}
-    });
+    static ɵfac = () => directiveInstance = new DirectiveWithVCRef(
+        ɵɵdirectiveInject(ViewContainerRef as any), injectComponentFactoryResolver())
+
+        static ɵdir = ɵɵdefineDirective({
+          type: DirectiveWithVCRef,
+          selectors: [['', 'vcref', '']],
+          inputs: {tplRef: 'tplRef', name: 'name'}
+        });
 
     // TODO(issue/24571): remove '!'.
-    tplRef !: TemplateRef<{}>;
+    tplRef!: TemplateRef<{}>;
+
+    name: string = '';
 
     // injecting a ViewContainerRef to create a dynamic container in which embedded views will be
     // created
-    constructor(public vcref: ViewContainerRef) {}
+    constructor(public vcref: ViewContainerRef, public cfr: ComponentFactoryResolver) {}
   }
 
   describe('API', () => {
-    function embeddedTemplate(rf: RenderFlags, ctx: any) {
-      if (rf & RenderFlags.Create) {
-        text(0);
-      }
-      if (rf & RenderFlags.Update) {
-        textBinding(0, bind(ctx.name));
-      }
-    }
-
-    function createView(s: string, index?: number): EmbeddedViewRef<any> {
-      return directiveInstance !.vcref.createEmbeddedView(
-          directiveInstance !.tplRef, {name: s}, index);
-    }
-
-    /**
-     * <ng-template #foo>
-     *   {{name}}
-     * </ng-template>
-     * <p vcref="" [tplRef]="foo">
-     * </p>
-     */
-    function createTemplate() {
-      container(0, embeddedTemplate);
-      elementStart(1, 'p', ['vcref', '']);
-      elementEnd();
-    }
-
-    function updateTemplate() {
-      const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-      elementProperty(1, 'tplRef', bind(tplRef));
-    }
-
     describe('createEmbeddedView (incl. insert)', () => {
-      it('should work on elements', () => {
-        function createTemplate() {
-          container(0, embeddedTemplate);
-          elementStart(1, 'header', ['vcref', '']);
-          elementEnd();
-          elementStart(2, 'footer');
-          elementEnd();
-        }
-
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        expect(fixture.html).toEqual('<header vcref=""></header><footer></footer>');
-
-        createView('A');
-        fixture.update();
-        expect(fixture.html).toEqual('<header vcref=""></header>A<footer></footer>');
-
-        createView('B');
-        createView('C');
-        fixture.update();
-        expect(fixture.html).toEqual('<header vcref=""></header>ABC<footer></footer>');
-
-        createView('Y', 0);
-        fixture.update();
-        expect(fixture.html).toEqual('<header vcref=""></header>YABC<footer></footer>');
-
-        expect(() => { createView('Z', -1); }).toThrow();
-        expect(() => { createView('Z', 5); }).toThrow();
-      });
-
-      it('should work on components', () => {
-        const HeaderComponent =
-            createComponent('header-cmp', function(rf: RenderFlags, ctx: any) {});
-
-        function createTemplate() {
-          container(0, embeddedTemplate);
-          elementStart(1, 'header-cmp', ['vcref', '']);
-          elementEnd();
-          elementStart(2, 'footer');
-          elementEnd();
-        }
-
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [HeaderComponent, DirectiveWithVCRef]);
-        expect(fixture.html).toEqual('<header-cmp vcref=""></header-cmp><footer></footer>');
-
-        createView('A');
-        fixture.update();
-        expect(fixture.html).toEqual('<header-cmp vcref=""></header-cmp>A<footer></footer>');
-
-        createView('B');
-        createView('C');
-        fixture.update();
-        expect(fixture.html).toEqual('<header-cmp vcref=""></header-cmp>ABC<footer></footer>');
-
-        createView('Y', 0);
-        fixture.update();
-        expect(fixture.html).toEqual('<header-cmp vcref=""></header-cmp>YABC<footer></footer>');
-
-        expect(() => { createView('Z', -1); }).toThrow();
-        expect(() => { createView('Z', 5); }).toThrow();
-      });
-
-      it('should work with multiple instances with vcrefs', () => {
-        let firstDir: DirectiveWithVCRef;
-        let secondDir: DirectiveWithVCRef;
-
-        function createTemplate() {
-          container(0, embeddedTemplate);
-          elementStart(1, 'div', ['vcref', '']);
-          elementEnd();
-          elementStart(2, 'div', ['vcref', '']);
-          elementEnd();
-
-          // for testing only:
-          firstDir = loadDirective(0);
-          secondDir = loadDirective(1);
-        }
-
-        function update() {
-          // Hack until we can create local refs to templates
-          const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-          elementProperty(1, 'tplRef', bind(tplRef));
-          elementProperty(2, 'tplRef', bind(tplRef));
-        }
-
-        const fixture = new TemplateFixture(createTemplate, update, [DirectiveWithVCRef]);
-        expect(fixture.html).toEqual('<div vcref=""></div><div vcref=""></div>');
-
-        firstDir !.vcref.createEmbeddedView(firstDir !.tplRef, {name: 'A'});
-        secondDir !.vcref.createEmbeddedView(secondDir !.tplRef, {name: 'B'});
-        fixture.update();
-        expect(fixture.html).toEqual('<div vcref=""></div>A<div vcref=""></div>B');
-      });
-
-      it('should work on containers', () => {
-        function createTemplate() {
-          container(0, embeddedTemplate, undefined, ['vcref', '']);
-          elementStart(1, 'footer');
-          elementEnd();
-        }
-
-        function updateTemplate() {
-          const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-          elementProperty(0, 'tplRef', bind(tplRef));
-          containerRefreshStart(0);
-          containerRefreshEnd();
-        }
-
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        expect(fixture.html).toEqual('<footer></footer>');
-
-        createView('A');
-        fixture.update();
-        expect(fixture.html).toEqual('A<footer></footer>');
-
-        createView('B');
-        createView('C');
-        fixture.update();
-        expect(fixture.html).toEqual('ABC<footer></footer>');
-
-        createView('Y', 0);
-        fixture.update();
-        expect(fixture.html).toEqual('YABC<footer></footer>');
-
-        expect(() => { createView('Z', -1); }).toThrow();
-        expect(() => { createView('Z', 5); }).toThrow();
-      });
-
       it('should add embedded views at the right position in the DOM tree (ng-template next to other ng-template)',
          () => {
            let directiveInstances: TestDirective[] = [];
 
            class TestDirective {
-             static ngDirectiveDef = defineDirective({
+             static ɵfac =
+                 () => {
+                   const instance = new TestDirective(
+                       ɵɵdirectiveInject(ViewContainerRef as any),
+                       ɵɵdirectiveInject(TemplateRef as any));
+
+                   directiveInstances.push(instance);
+
+                   return instance;
+                 }
+
+             static ɵdir = ɵɵdefineDirective({
                type: TestDirective,
                selectors: [['', 'testdir', '']],
-               factory: () => {
-                 const instance = new TestDirective(injectViewContainerRef(), injectTemplateRef());
-
-                 directiveInstances.push(instance);
-
-                 return instance;
-               }
              });
 
              constructor(private _vcRef: ViewContainerRef, private _tplRef: TemplateRef<{}>) {}
 
-             insertTpl(ctx: {}) { this._vcRef.createEmbeddedView(this._tplRef, ctx); }
+             insertTpl(ctx: {}) {
+               this._vcRef.createEmbeddedView(this._tplRef, ctx);
+             }
 
-             remove(index?: number) { this._vcRef.remove(index); }
+             remove(index?: number) {
+               this._vcRef.remove(index);
+             }
            }
 
            function EmbeddedTemplateA(rf: RenderFlags, ctx: any) {
              if (rf & RenderFlags.Create) {
-               text(0, 'A');
+               ɵɵtext(0, 'A');
              }
            }
 
            function EmbeddedTemplateB(rf: RenderFlags, ctx: any) {
              if (rf & RenderFlags.Create) {
-               text(0, 'B');
+               ɵɵtext(0, 'B');
              }
            }
 
@@ -243,103 +104,24 @@ describe('ViewContainerRef', () => {
             */
            class TestComponent {
              // TODO(issue/24571): remove '!'.
-             testDir !: TestDirective;
-             static ngComponentDef = defineComponent({
+             testDir!: TestDirective;
+             static ɵfac = () => new TestComponent();
+             static ɵcmp = ɵɵdefineComponent({
                type: TestComponent,
+               encapsulation: ViewEncapsulation.None,
                selectors: [['test-cmp']],
-               factory: () => new TestComponent(),
-               template: (rf: RenderFlags, cmp: TestComponent) => {
-                 if (rf & RenderFlags.Create) {
-                   text(0, 'before|');
-                   container(1, EmbeddedTemplateA, undefined, ['testdir', '']);
-                   container(2, EmbeddedTemplateB, undefined, ['testdir', '']);
-                   text(3, '|after');
-                 }
-               },
-               directives: [TestDirective]
-             });
-           }
-
-           const fixture = new ComponentFixture(TestComponent);
-           expect(fixture.html).toEqual('before||after');
-
-           directiveInstances ![1].insertTpl({});
-           expect(fixture.html).toEqual('before|B|after');
-
-           directiveInstances ![0].insertTpl({});
-           expect(fixture.html).toEqual('before|AB|after');
-         });
-
-
-      it('should add embedded views at the right position in the DOM tree (ng-template next to a JS block)',
-         () => {
-           let directiveInstance: TestDirective;
-
-           class TestDirective {
-             static ngDirectiveDef = defineDirective({
-               type: TestDirective,
-               selectors: [['', 'testdir', '']],
-               factory: () => directiveInstance =
-                            new TestDirective(injectViewContainerRef(), injectTemplateRef())
-             });
-
-             constructor(private _vcRef: ViewContainerRef, private _tplRef: TemplateRef<{}>) {}
-
-             insertTpl(ctx: {}) { this._vcRef.createEmbeddedView(this._tplRef, ctx); }
-
-             insertTpl2(ctx: {}) {
-               const viewRef = this._tplRef.createEmbeddedView(ctx);
-               this._vcRef.insert(viewRef);
-             }
-
-             remove(index?: number) { this._vcRef.remove(index); }
-           }
-
-           function EmbeddedTemplateA(rf: RenderFlags, ctx: any) {
-             if (rf & RenderFlags.Create) {
-               text(0, 'A');
-             }
-           }
-
-           /**
-            * before|
-            * <ng-template testDir>A<ng-template>
-            * % if (condition) {
-            *  B
-            * % }
-            * |after
-            */
-           class TestComponent {
-             condition = false;
-             // TODO(issue/24571): remove '!'.
-             testDir !: TestDirective;
-             static ngComponentDef = defineComponent({
-               type: TestComponent,
-               selectors: [['test-cmp']],
-               factory: () => new TestComponent(),
-               template: (rf: RenderFlags, cmp: TestComponent) => {
-                 if (rf & RenderFlags.Create) {
-                   text(0, 'before|');
-                   container(1, EmbeddedTemplateA, undefined, ['testdir', '']);
-                   container(2);
-                   text(3, '|after');
-                 }
-                 if (rf & RenderFlags.Update) {
-                   containerRefreshStart(2);
-                   {
-                     if (cmp.condition) {
-                       let rf1 = embeddedViewStart(0);
-                       {
-                         if (rf1 & RenderFlags.Create) {
-                           text(0, 'B');
-                         }
-                       }
-                       embeddedViewEnd();
+               decls: 4,
+               vars: 0,
+               consts: [['testdir', '']],
+               template:
+                   (rf: RenderFlags, cmp: TestComponent) => {
+                     if (rf & RenderFlags.Create) {
+                       ɵɵtext(0, 'before|');
+                       ɵɵtemplate(1, EmbeddedTemplateA, 1, 0, 'ng-template', 0);
+                       ɵɵtemplate(2, EmbeddedTemplateB, 1, 0, 'ng-template', 0);
+                       ɵɵtext(3, '|after');
                      }
-                   }
-                   containerRefreshEnd();
-                 }
-               },
+                   },
                directives: [TestDirective]
              });
            }
@@ -347,740 +129,321 @@ describe('ViewContainerRef', () => {
            const fixture = new ComponentFixture(TestComponent);
            expect(fixture.html).toEqual('before||after');
 
-           fixture.component.condition = true;
-           fixture.update();
+           directiveInstances![1].insertTpl({});
            expect(fixture.html).toEqual('before|B|after');
 
-           directiveInstance !.insertTpl({});
+           directiveInstances![0].insertTpl({});
            expect(fixture.html).toEqual('before|AB|after');
-
-           fixture.component.condition = false;
-           fixture.update();
-           expect(fixture.html).toEqual('before|A|after');
-
-           directiveInstance !.insertTpl2({});
-           expect(fixture.html).toEqual('before|AA|after');
-
-           fixture.component.condition = true;
-           fixture.update();
-           expect(fixture.html).toEqual('before|AAB|after');
          });
+    });
 
-      it('should apply directives and pipes of the host view to the TemplateRef', () => {
-        @Component({selector: 'child', template: `{{name}}`})
-        class Child {
-          // TODO(issue/24571): remove '!'.
-          name !: string;
+    describe('createComponent', () => {
+      let templateExecutionCounter = 0;
 
-          static ngComponentDef = defineComponent({
-            type: Child,
-            selectors: [['child']],
-            factory: () => new Child(),
-            template: (rf: RenderFlags, cmp: Child) => {
-              if (rf & RenderFlags.Create) {
-                text(0);
+      describe('ComponentRef', () => {
+        let dynamicComp!: DynamicComp;
+
+        class AppComp {
+          constructor(public vcr: ViewContainerRef, public cfr: ComponentFactoryResolver) {}
+
+          static ɵfac =
+              () => {
+                return new AppComp(
+                    ɵɵdirectiveInject(ViewContainerRef as any), injectComponentFactoryResolver());
               }
-              if (rf & RenderFlags.Update) {
-                textBinding(0, interpolation1('', cmp.name, ''));
-              }
-            },
-            inputs: {name: 'name'}
+
+          static ɵcmp = ɵɵdefineComponent({
+            type: AppComp,
+            selectors: [['app-comp']],
+            decls: 0,
+            vars: 0,
+            template: (rf: RenderFlags, cmp: AppComp) => {}
           });
         }
 
-        @Pipe({name: 'starPipe'})
-        class StarPipe implements PipeTransform {
-          transform(value: any) { return `**${value}**`; }
+        class DynamicComp {
+          doCheckCount = 0;
 
-          static ngPipeDef = definePipe({
-            name: 'starPipe',
-            type: StarPipe,
-            factory: function StarPipe_Factory() { return new StarPipe(); },
+          ngDoCheck() {
+            this.doCheckCount++;
+          }
+
+          static ɵfac = () => dynamicComp = new DynamicComp();
+
+          static ɵcmp = ɵɵdefineComponent({
+            type: DynamicComp,
+            selectors: [['dynamic-comp']],
+            decls: 0,
+            vars: 0,
+            template: (rf: RenderFlags, cmp: DynamicComp) => {}
           });
         }
 
-        @Component({
-          template: `
-            <ng-template #foo>
-              <child [name]="'C' | starPipe"></child>
-            </ng-template>
-            <child vcref [tplRef]="foo" [name]="'A' | starPipe"></child>
-            <child [name]="'B' | starPipe"></child>
-          `
-        })
-        class SomeComponent {
-          static ngComponentDef = defineComponent({
-            type: SomeComponent,
-            selectors: [['some-comp']],
-            factory: () => new SomeComponent(),
-            template: (rf: RenderFlags, cmp: SomeComponent) => {
-              if (rf & RenderFlags.Create) {
-                container(0, (rf: RenderFlags, ctx: any) => {
-                  if (rf & RenderFlags.Create) {
-                    elementStart(0, 'child');
-                    elementEnd();
-                    pipe(1, 'starPipe');
-                    reserveSlots(2);
-                  }
-                  if (rf & RenderFlags.Update) {
-                    elementProperty(0, 'name', bind(pipeBind1(1, 2, 'C')));
-                  }
-                });
-                pipe(1, 'starPipe');
-                elementStart(2, 'child', ['vcref', '']);
-                elementEnd();
-                pipe(3, 'starPipe');
-                elementStart(4, 'child');
-                elementEnd();
-                reserveSlots(4);
-              }
-              if (rf & RenderFlags.Update) {
-                const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-                elementProperty(2, 'tplRef', bind(tplRef));
-                elementProperty(2, 'name', bind(pipeBind1(1, 2, 'A')));
-                elementProperty(4, 'name', bind(pipeBind1(1, 4, 'B')));
-              }
-            },
-            directives: [Child, DirectiveWithVCRef],
-            pipes: [StarPipe]
-          });
+        it('should return ComponentRef with ChangeDetectorRef attached to root view', () => {
+          const fixture = new ComponentFixture(AppComp);
+
+          const dynamicCompFactory = fixture.component.cfr.resolveComponentFactory(DynamicComp);
+          const ref = fixture.component.vcr.createComponent(dynamicCompFactory);
+          fixture.update();
+          expect(dynamicComp.doCheckCount).toEqual(1);
+
+          // The change detector ref should be attached to the root view that contains
+          // DynamicComp, so the doCheck hook for DynamicComp should run upon ref.detectChanges().
+          ref.changeDetectorRef.detectChanges();
+          expect(dynamicComp.doCheckCount).toEqual(2);
+          expect((ref.changeDetectorRef as any).context).toBeNull();
+        });
+
+        it('should return ComponentRef that can retrieve component ChangeDetectorRef through its injector',
+           () => {
+             const fixture = new ComponentFixture(AppComp);
+
+             const dynamicCompFactory = fixture.component.cfr.resolveComponentFactory(DynamicComp);
+             const ref = fixture.component.vcr.createComponent(dynamicCompFactory);
+             fixture.update();
+             expect(dynamicComp.doCheckCount).toEqual(1);
+
+             // The injector should retrieve the change detector ref for DynamicComp. As such,
+             // the doCheck hook for DynamicComp should NOT run upon ref.detectChanges().
+             const changeDetector = ref.injector.get(ChangeDetectorRef);
+             changeDetector.detectChanges();
+             expect(dynamicComp.doCheckCount).toEqual(1);
+             expect((changeDetector as any).context).toEqual(dynamicComp);
+           });
+
+        it('should not throw when destroying a reattached component', () => {
+          const fixture = new ComponentFixture(AppComp);
+
+          const dynamicCompFactory = fixture.component.cfr.resolveComponentFactory(DynamicComp);
+          const ref = fixture.component.vcr.createComponent(dynamicCompFactory);
+          fixture.update();
+
+          fixture.component.vcr.detach(fixture.component.vcr.indexOf(ref.hostView));
+
+          expect(() => {
+            ref.destroy();
+          }).not.toThrow();
+        });
+      });
+    });
+
+    describe('getters', () => {
+      it('should work on elements', () => {
+        function createTemplate() {
+          ɵɵelement(0, 'header', 0);
+          ɵɵelement(1, 'footer');
         }
 
-        const fixture = new ComponentFixture(SomeComponent);
-        directiveInstance !.vcref.createEmbeddedView(directiveInstance !.tplRef, fixture.component);
-        directiveInstance !.vcref.createEmbeddedView(directiveInstance !.tplRef, fixture.component);
-        fixture.update();
-        expect(fixture.html)
-            .toEqual(
-                '<child vcref="">**A**</child><child>**C**</child><child>**C**</child><child>**B**</child>');
-      });
-    });
+        new TemplateFixture({
+          create: createTemplate,
+          decls: 2,
+          directives: [DirectiveWithVCRef],
+          consts: [['vcref', '']]
+        });
 
-    const rendererFactory = getRendererFactory2(document);
-
-    describe('detach', () => {
-      it('should detach the right embedded view when an index is specified', () => {
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [DirectiveWithVCRef], null, null, rendererFactory);
-        const viewA = createView('A');
-        createView('B');
-        createView('C');
-        const viewD = createView('D');
-        createView('E');
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCDE');
-
-        directiveInstance !.vcref.detach(3);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCE');
-        expect(viewD.destroyed).toBeFalsy();
-
-        directiveInstance !.vcref.detach(0);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>BCE');
-        expect(viewA.destroyed).toBeFalsy();
-
-        expect(() => { directiveInstance !.vcref.detach(-1); }).toThrow();
-        expect(() => { directiveInstance !.vcref.detach(42); }).toThrow();
-        expect(ngDevMode).toHaveProperties({rendererDestroyNode: 0});
+        expect(directiveInstance!.vcref.element.nativeElement.tagName.toLowerCase())
+            .toEqual('header');
+        expect(
+            directiveInstance!.vcref.injector.get(ElementRef).nativeElement.tagName.toLowerCase())
+            .toEqual('header');
+        expect(() => directiveInstance!.vcref.parentInjector.get(ElementRef)).toThrow();
       });
 
+      it('should work on components', () => {
+        const HeaderComponent =
+            createComponent('header-cmp', function(rf: RenderFlags, ctx: any) {});
 
-      it('should detach the last embedded view when no index is specified', () => {
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [DirectiveWithVCRef], null, null, rendererFactory);
-        createView('A');
-        createView('B');
-        createView('C');
-        createView('D');
-        const viewE = createView('E');
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCDE');
+        function createTemplate() {
+          ɵɵelement(0, 'header-cmp', 0);
+          ɵɵelement(1, 'footer');
+        }
 
-        directiveInstance !.vcref.detach();
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCD');
-        expect(viewE.destroyed).toBeFalsy();
-        expect(ngDevMode).toHaveProperties({rendererDestroyNode: 0});
-      });
-    });
+        new TemplateFixture({
+          create: createTemplate,
+          decls: 2,
+          directives: [HeaderComponent, DirectiveWithVCRef],
+          consts: [['vcref', '']]
+        });
 
-    describe('remove', () => {
-      it('should remove the right embedded view when an index is specified', () => {
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [DirectiveWithVCRef], null, null, rendererFactory);
-        const viewA = createView('A');
-        createView('B');
-        createView('C');
-        const viewD = createView('D');
-        createView('E');
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCDE');
-
-        directiveInstance !.vcref.remove(3);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCE');
-        expect(viewD.destroyed).toBeTruthy();
-
-        directiveInstance !.vcref.remove(0);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>BCE');
-        expect(viewA.destroyed).toBeTruthy();
-
-        expect(() => { directiveInstance !.vcref.remove(-1); }).toThrow();
-        expect(() => { directiveInstance !.vcref.remove(42); }).toThrow();
-        expect(ngDevMode).toHaveProperties({rendererDestroyNode: 2});
-      });
-
-      it('should remove the last embedded view when no index is specified', () => {
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [DirectiveWithVCRef], null, null, rendererFactory);
-        createView('A');
-        createView('B');
-        createView('C');
-        createView('D');
-        const viewE = createView('E');
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCDE');
-
-        directiveInstance !.vcref.remove();
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABCD');
-        expect(viewE.destroyed).toBeTruthy();
-        expect(ngDevMode).toHaveProperties({rendererDestroyNode: 1});
-      });
-
-      it('should throw when trying to insert a removed or destroyed view', () => {
-        const fixture = new TemplateFixture(
-            createTemplate, updateTemplate, [DirectiveWithVCRef], null, null, rendererFactory);
-        const viewA = createView('A');
-        const viewB = createView('B');
-        fixture.update();
-
-        directiveInstance !.vcref.remove();
-        fixture.update();
-        expect(() => directiveInstance !.vcref.insert(viewB)).toThrow();
-
-        viewA.destroy();
-        fixture.update();
-        expect(() => directiveInstance !.vcref.insert(viewA)).toThrow();
-      });
-    });
-
-    describe('length', () => {
-      it('should return the number of embedded views', () => {
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        expect(directiveInstance !.vcref.length).toEqual(0);
-
-        createView('A');
-        createView('B');
-        createView('C');
-        fixture.update();
-        expect(directiveInstance !.vcref.length).toEqual(3);
-
-        directiveInstance !.vcref.detach(1);
-        fixture.update();
-        expect(directiveInstance !.vcref.length).toEqual(2);
-
-        directiveInstance !.vcref.clear();
-        fixture.update();
-        expect(directiveInstance !.vcref.length).toEqual(0);
-      });
-    });
-
-    describe('get and indexOf', () => {
-      it('should retrieve a ViewRef from its index, and vice versa', () => {
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        createView('A');
-        createView('B');
-        createView('C');
-        fixture.update();
-
-        let viewRef = directiveInstance !.vcref.get(0);
-        expect(directiveInstance !.vcref.indexOf(viewRef !)).toEqual(0);
-
-        viewRef = directiveInstance !.vcref.get(1);
-        expect(directiveInstance !.vcref.indexOf(viewRef !)).toEqual(1);
-
-        viewRef = directiveInstance !.vcref.get(2);
-        expect(directiveInstance !.vcref.indexOf(viewRef !)).toEqual(2);
-      });
-
-      it('should handle out of bounds cases', () => {
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        createView('A');
-        fixture.update();
-
-        expect(directiveInstance !.vcref.get(-1)).toBeNull();
-        expect(directiveInstance !.vcref.get(42)).toBeNull();
-
-        const viewRef = directiveInstance !.vcref.get(0);
-        directiveInstance !.vcref.remove(0);
-        expect(directiveInstance !.vcref.indexOf(viewRef !)).toEqual(-1);
-      });
-    });
-
-    describe('move', () => {
-      it('should move embedded views and associated DOM nodes without recreating them', () => {
-        const fixture = new TemplateFixture(createTemplate, updateTemplate, [DirectiveWithVCRef]);
-        createView('A');
-        createView('B');
-        createView('C');
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>ABC');
-
-        // The DOM is manually modified here to ensure that the text node is actually moved
-        fixture.hostElement.childNodes[2].nodeValue = '**A**';
-        expect(fixture.html).toEqual('<p vcref=""></p>**A**BC');
-
-        let viewRef = directiveInstance !.vcref.get(0);
-        directiveInstance !.vcref.move(viewRef !, 2);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>BC**A**');
-
-        directiveInstance !.vcref.move(viewRef !, 0);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>**A**BC');
-
-        directiveInstance !.vcref.move(viewRef !, 1);
-        fixture.update();
-        expect(fixture.html).toEqual('<p vcref=""></p>B**A**C');
-
-        expect(() => { directiveInstance !.vcref.move(viewRef !, -1); }).toThrow();
-        expect(() => { directiveInstance !.vcref.move(viewRef !, 42); }).toThrow();
+        expect(directiveInstance!.vcref.element.nativeElement.tagName.toLowerCase())
+            .toEqual('header-cmp');
+        expect(
+            directiveInstance!.vcref.injector.get(ElementRef).nativeElement.tagName.toLowerCase())
+            .toEqual('header-cmp');
+        expect(() => directiveInstance!.vcref.parentInjector.get(ElementRef)).toThrow();
       });
     });
   });
 
-  describe('projection', () => {
-    function embeddedTemplate(rf: RenderFlags, ctx: any) {
-      if (rf & RenderFlags.Create) {
-        elementStart(0, 'span');
-        text(1);
-        elementEnd();
+  describe('view engine compatibility', () => {
+    @Component({selector: 'app', template: ''})
+    class AppCmpt {
+      static ɵfac = () =>
+          new AppCmpt(ɵɵdirectiveInject(ViewContainerRef as any), injectComponentFactoryResolver())
+
+              static ɵcmp = ɵɵdefineComponent({
+                type: AppCmpt,
+                selectors: [['app']],
+                decls: 0,
+                vars: 0,
+                template: (rf: RenderFlags, cmp: AppCmpt) => {}
+              });
+
+      constructor(private _vcRef: ViewContainerRef, private _cfResolver: ComponentFactoryResolver) {
       }
-      textBinding(1, ctx.name);
+
+      insert(comp: any) {
+        this._vcRef.createComponent(this._cfResolver.resolveComponentFactory(comp));
+      }
+
+      clear() {
+        this._vcRef.clear();
+      }
+
+      getVCRefParentInjector() {
+        return this._vcRef.parentInjector;
+      }
     }
 
-    it('should project the ViewContainerRef content along its host, in an element', () => {
-      @Component({selector: 'child', template: '<div><ng-content></ng-content></div>'})
-      class Child {
-        static ngComponentDef = defineComponent({
-          type: Child,
-          selectors: [['child']],
-          factory: () => new Child(),
-          template: (rf: RenderFlags, cmp: Child) => {
+    // https://stackblitz.com/edit/angular-xxpffd?file=src%2Findex.html
+    it('should allow injecting VCRef into the root (bootstrapped) component', () => {
+      const DynamicComponent =
+          createComponent('dynamic-cmpt', function(rf: RenderFlags, parent: any) {
             if (rf & RenderFlags.Create) {
-              projectionDef();
-              elementStart(0, 'div');
-              { projection(1); }
-              elementEnd();
+              ɵɵtext(0, 'inserted dynamically');
             }
-          }
-        });
-      }
+          }, 1, 0);
 
-      @Component({
-        selector: 'parent',
-        template: `
-          <ng-template #foo>
-              <span>{{name}}</span>
-          </ng-template>
-          <child><header vcref [tplRef]="foo" [name]="name">blah</header></child>`
-      })
-      class Parent {
-        name: string = 'bar';
-        static ngComponentDef = defineComponent({
-          type: Parent,
-          selectors: [['parent']],
-          factory: () => new Parent(),
-          template: (rf: RenderFlags, cmp: Parent) => {
-            if (rf & RenderFlags.Create) {
-              container(0, embeddedTemplate);
-              elementStart(1, 'child');
-              elementStart(2, 'header', ['vcref', '']);
-              text(3, 'blah');
-              elementEnd();
-              elementEnd();
-            }
-            let tplRef: any;
-            if (rf & RenderFlags.Update) {
-              tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-              elementProperty(2, 'tplRef', bind(tplRef));
-              elementProperty(2, 'name', bind(cmp.name));
-            }
-          },
-          directives: [Child, DirectiveWithVCRef]
-        });
-      }
 
-      const fixture = new ComponentFixture(Parent);
-      expect(fixture.html).toEqual('<child><div><header vcref="">blah</header></div></child>');
+      const fixture = new ComponentFixture(AppCmpt);
+      expect(fixture.outerHtml).toBe('<div host="mark"></div>');
 
-      directiveInstance !.vcref.createEmbeddedView(directiveInstance !.tplRef, fixture.component);
+      fixture.component.insert(DynamicComponent);
       fixture.update();
-      expect(fixture.html)
-          .toEqual('<child><div><header vcref="">blah</header><span>bar</span></div></child>');
+      expect(fixture.outerHtml)
+          .toBe('<div host="mark"></div><dynamic-cmpt>inserted dynamically</dynamic-cmpt>');
+
+      fixture.component.clear();
+      fixture.update();
+      expect(fixture.outerHtml).toBe('<div host="mark"></div>');
     });
 
-    it('should project the ViewContainerRef content along its host, in a view', () => {
-      @Component({
-        selector: 'child-with-view',
-        template: `
-          Before (inside)-
-          % if (show) {
-            <ng-content></ng-content>
-          % }
-          After (inside)
-        `
-      })
-      class ChildWithView {
-        show: boolean = true;
-        static ngComponentDef = defineComponent({
-          type: ChildWithView,
-          selectors: [['child-with-view']],
-          factory: () => new ChildWithView(),
-          template: (rf: RenderFlags, cmp: ChildWithView) => {
-            if (rf & RenderFlags.Create) {
-              projectionDef();
-              text(0, 'Before (inside)-');
-              container(1);
-              text(2, 'After (inside)');
-            }
-            if (rf & RenderFlags.Update) {
-              containerRefreshStart(1);
-              if (cmp.show) {
-                let rf0 = embeddedViewStart(0);
-                if (rf0 & RenderFlags.Create) {
-                  projection(0);
+    it('should allow getting the parentInjector of the VCRef which was injected into the root (bootstrapped) component',
+       () => {
+         const fixture = new ComponentFixture(AppCmpt, {
+           injector: {
+             get: (token: any) => {
+               if (token === 'foo') return 'bar';
+             }
+           }
+         });
+         expect(fixture.outerHtml).toBe('<div host="mark"></div>');
+
+         const parentInjector = fixture.component.getVCRefParentInjector();
+         expect(parentInjector.get('foo')).toEqual('bar');
+       });
+
+    it('should support view queries for dynamically created components', () => {
+      let dynamicComp!: DynamicCompWithViewQueries;
+      let fooEl!: RElement;
+
+      class DynamicCompWithViewQueries {
+        // @ViewChildren('foo')
+        foo!: QueryList<any>;
+
+        static ɵfac = () => dynamicComp = new DynamicCompWithViewQueries();
+        static ɵcmp = ɵɵdefineComponent({
+          type: DynamicCompWithViewQueries,
+          selectors: [['dynamic-cmpt-with-view-queries']],
+          decls: 2,
+          vars: 0,
+          consts: [['foo', ''], ['bar', '']],
+          template:
+              (rf: RenderFlags, ctx: DynamicCompWithViewQueries) => {
+                if (rf & RenderFlags.Create) {
+                  ɵɵelement(0, 'div', 1, 0);
                 }
-                embeddedViewEnd();
+                // testing only
+                fooEl = getNativeByIndex(HEADER_OFFSET, getLView()) as RElement;
+              },
+          viewQuery:
+              function(rf: RenderFlags, ctx: any) {
+                if (rf & RenderFlags.Create) {
+                  ɵɵviewQuery(['foo'], QueryFlags.descendants);
+                }
+                if (rf & RenderFlags.Update) {
+                  let tmp: any;
+                  ɵɵqueryRefresh(tmp = ɵɵloadQuery<QueryList<any>>()) &&
+                      (ctx.foo = tmp as QueryList<any>);
+                }
               }
-              containerRefreshEnd();
-            }
-          }
         });
       }
 
-      @Component({
-        selector: 'parent',
-        template: `
-          <ng-template #foo>
-              <span>{{name}}</span>
-          </ng-template>
-          <child-with-view>
-            Before projected
-            <header vcref [tplRef]="foo" [name]="name">blah</header>
-            After projected
-          </child-with-view>`
-      })
-      class Parent {
-        name: string = 'bar';
-        static ngComponentDef = defineComponent({
-          type: Parent,
-          selectors: [['parent']],
-          factory: () => new Parent(),
-          template: (rf: RenderFlags, cmp: Parent) => {
-            if (rf & RenderFlags.Create) {
-              container(0, embeddedTemplate);
-              elementStart(1, 'child-with-view');
-              text(2, 'Before projected');
-              elementStart(3, 'header', ['vcref', '']);
-              text(4, 'blah');
-              elementEnd();
-              text(5, 'After projected-');
-              elementEnd();
-            }
-            if (rf & RenderFlags.Update) {
-              const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-              elementProperty(3, 'tplRef', bind(tplRef));
-              elementProperty(3, 'name', bind(cmp.name));
-            }
-          },
-          directives: [ChildWithView, DirectiveWithVCRef]
-        });
-      }
+      const fixture = new ComponentFixture(AppCmpt);
 
-      const fixture = new ComponentFixture(Parent);
-      expect(fixture.html)
-          .toEqual(
-              '<child-with-view>Before (inside)-Before projected<header vcref="">blah</header>After projected-After (inside)</child-with-view>');
-
-      directiveInstance !.vcref.createEmbeddedView(directiveInstance !.tplRef, fixture.component);
+      fixture.component.insert(DynamicCompWithViewQueries);
       fixture.update();
-      expect(fixture.html)
-          .toEqual(
-              '<child-with-view>Before (inside)-Before projected<header vcref="">blah</header><span>bar</span>After projected-After (inside)</child-with-view>');
-    });
 
-    describe('with select', () => {
-      @Component({
-        selector: 'child-with-selector',
-        template: `
-          <first><ng-content select="header"></ng-content></first>
-          <second><ng-content></ng-content></second>`
-      })
-      class ChildWithSelector {
-        static ngComponentDef = defineComponent({
-          type: ChildWithSelector,
-          selectors: [['child-with-selector']],
-          factory: () => new ChildWithSelector(),
-          template: (rf: RenderFlags, cmp: ChildWithSelector) => {
-            if (rf & RenderFlags.Create) {
-              projectionDef([[['header']]], ['header']);
-              elementStart(0, 'first');
-              { projection(1, 1); }
-              elementEnd();
-              elementStart(2, 'second');
-              { projection(3); }
-              elementEnd();
-            }
-          },
-          directives: [ChildWithSelector, DirectiveWithVCRef]
-        });
-      }
-
-      it('should project the ViewContainerRef content along its host, when the host matches a selector',
-         () => {
-           @Component({
-             selector: 'parent',
-             template: `
-            <ng-template #foo>
-                <span>{{name}}</span>
-              </ng-template>
-            <child-with-selector><header vcref [tplRef]="foo" [name]="name">blah</header></child-with-selector>`
-           })
-           class Parent {
-             name: string = 'bar';
-             static ngComponentDef = defineComponent({
-               type: Parent,
-               selectors: [['parent']],
-               factory: () => new Parent(),
-               template: (rf: RenderFlags, cmp: Parent) => {
-                 let tplRef: any;
-                 if (rf & RenderFlags.Create) {
-                   container(0, embeddedTemplate);
-                   elementStart(1, 'child-with-selector');
-                   elementStart(2, 'header', ['vcref', '']);
-                   text(3, 'blah');
-                   elementEnd();
-                   elementEnd();
-                 }
-                 if (rf & RenderFlags.Update) {
-                   tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-                   elementProperty(2, 'tplRef', bind(tplRef));
-                   elementProperty(2, 'name', bind(cmp.name));
-                 }
-               },
-               directives: [ChildWithSelector, DirectiveWithVCRef]
-             });
-           }
-
-           const fixture = new ComponentFixture(Parent);
-           expect(fixture.html)
-               .toEqual(
-                   '<child-with-selector><first><header vcref="">blah</header></first><second></second></child-with-selector>');
-
-           directiveInstance !.vcref.createEmbeddedView(
-               directiveInstance !.tplRef, fixture.component);
-           fixture.update();
-           expect(fixture.html)
-               .toEqual(
-                   '<child-with-selector><first><header vcref="">blah</header><span>bar</span></first><second></second></child-with-selector>');
-         });
-
-      it('should not project the ViewContainerRef content, when the host does not match a selector',
-         () => {
-           @Component({
-             selector: 'parent',
-             template: `
-            <ng-template #foo>
-                <span>{{name}}</span>
-              </ng-template>
-            <child-with-selector><footer vcref [tplRef]="foo" [name]="name">blah</footer></child-with-selector>`
-           })
-           class Parent {
-             name: string = 'bar';
-             static ngComponentDef = defineComponent({
-               type: Parent,
-               selectors: [['parent']],
-               factory: () => new Parent(),
-               template: (rf: RenderFlags, cmp: Parent) => {
-                 let tplRef: any;
-                 if (rf & RenderFlags.Create) {
-                   container(0, embeddedTemplate);
-                   elementStart(1, 'child-with-selector');
-                   elementStart(2, 'footer', ['vcref', '']);
-                   text(3, 'blah');
-                   elementEnd();
-                   elementEnd();
-                 }
-                 if (rf & RenderFlags.Update) {
-                   tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-                   elementProperty(2, 'tplRef', bind(tplRef));
-                   elementProperty(2, 'name', bind(cmp.name));
-                 }
-               },
-               directives: [ChildWithSelector, DirectiveWithVCRef]
-             });
-           }
-
-           const fixture = new ComponentFixture(Parent);
-           expect(fixture.html)
-               .toEqual(
-                   '<child-with-selector><first></first><second><footer vcref="">blah</footer></second></child-with-selector>');
-
-           directiveInstance !.vcref.createEmbeddedView(
-               directiveInstance !.tplRef, fixture.component);
-           fixture.update();
-           expect(fixture.html)
-               .toEqual(
-                   '<child-with-selector><first></first><second><footer vcref="">blah</footer><span>bar</span></second></child-with-selector>');
-         });
+      expect(dynamicComp.foo.first.nativeElement).toEqual(fooEl as any);
     });
   });
 
-  describe('life cycle hooks', () => {
+  describe('view destruction', () => {
+    class CompWithListenerThatDestroysItself {
+      constructor(private viewRef: ViewRef) {}
 
-    // Angular 5 reference: https://stackblitz.com/edit/lifecycle-hooks-vcref
-    const log: string[] = [];
-    it('should call all hooks in correct order', () => {
-      @Component({selector: 'hooks', template: `{{name}}`})
-      class ComponentWithHooks {
-        // TODO(issue/24571): remove '!'.
-        name !: string;
+      onClick() {}
 
-        private log(msg: string) { log.push(msg); }
-
-        ngOnChanges() { this.log('onChanges-' + this.name); }
-        ngOnInit() { this.log('onInit-' + this.name); }
-        ngDoCheck() { this.log('doCheck-' + this.name); }
-
-        ngAfterContentInit() { this.log('afterContentInit-' + this.name); }
-        ngAfterContentChecked() { this.log('afterContentChecked-' + this.name); }
-
-        ngAfterViewInit() { this.log('afterViewInit-' + this.name); }
-        ngAfterViewChecked() { this.log('afterViewChecked-' + this.name); }
-
-        ngOnDestroy() { this.log('onDestroy-' + this.name); }
-
-        static ngComponentDef = defineComponent({
-          type: ComponentWithHooks,
-          selectors: [['hooks']],
-          factory: () => new ComponentWithHooks(),
-          template: (rf: RenderFlags, cmp: ComponentWithHooks) => {
-            if (rf & RenderFlags.Create) {
-              text(0);
-            }
-            if (rf & RenderFlags.Update) {
-              textBinding(0, interpolation1('', cmp.name, ''));
-            }
-          },
-          features: [NgOnChangesFeature],
-          inputs: {name: 'name'}
-        });
+      ngOnDestroy() {
+        this.viewRef.destroy();
       }
 
-      @Component({
-        template: `
-          <ng-template #foo>
-            <hooks [name]="'C'"></hooks>
-          </ng-template>
-          <hooks vcref [tplRef]="foo" [name]="'A'"></hooks>
-          <hooks [name]="'B'"></hooks>
-        `
-      })
-      class SomeComponent {
-        static ngComponentDef = defineComponent({
-          type: SomeComponent,
-          selectors: [['some-comp']],
-          factory: () => new SomeComponent(),
-          template: (rf: RenderFlags, cmp: SomeComponent) => {
-            if (rf & RenderFlags.Create) {
-              container(0, (rf: RenderFlags, ctx: any) => {
-                if (rf & RenderFlags.Create) {
-                  elementStart(0, 'hooks');
-                  elementEnd();
-                }
-                if (rf & RenderFlags.Update) {
-                  elementProperty(0, 'name', bind('C'));
-                }
+      // We want the ViewRef, so we rely on the knowledge that `ViewRef` is actually given
+      // when injecting `ChangeDetectorRef`.
+      static ɵfac = () =>
+          new CompWithListenerThatDestroysItself(ɵɵdirectiveInject(ChangeDetectorRef as any))
+
+              static ɵcmp = ɵɵdefineComponent({
+                type: CompWithListenerThatDestroysItself,
+                selectors: [['comp-with-listener-and-on-destroy']],
+                decls: 2,
+                vars: 0,
+                /** <button (click)="onClick()"> Click me </button> */
+                template:
+                    function CompTemplate(rf: RenderFlags, ctx: any) {
+                      if (rf & RenderFlags.Create) {
+                        ɵɵelementStart(0, 'button');
+                        {
+                          ɵɵlistener('click', function() {
+                            return ctx.onClick();
+                          });
+                          ɵɵtext(1, 'Click me');
+                        }
+                        ɵɵelementEnd();
+                      }
+                    },
               });
-              elementStart(1, 'hooks', ['vcref', '']);
-              elementEnd();
-              elementStart(2, 'hooks');
-              elementEnd();
-            }
-            if (rf & RenderFlags.Update) {
-              const tplRef = getOrCreateTemplateRef(getOrCreateNodeInjectorForNode(load(0)));
-              elementProperty(1, 'tplRef', bind(tplRef));
-              elementProperty(1, 'name', bind('A'));
-              elementProperty(2, 'name', bind('B'));
-            }
-          },
-          directives: [ComponentWithHooks, DirectiveWithVCRef]
-        });
-      }
+    }
 
-      const fixture = new ComponentFixture(SomeComponent);
-      expect(log).toEqual([
-        'onChanges-A', 'onInit-A', 'doCheck-A', 'onChanges-B', 'onInit-B', 'doCheck-B',
-        'afterContentInit-A', 'afterContentChecked-A', 'afterContentInit-B',
-        'afterContentChecked-B', 'afterViewInit-A', 'afterViewChecked-A', 'afterViewInit-B',
-        'afterViewChecked-B'
-      ]);
 
-      log.length = 0;
+    it('should not error when destroying a view with listeners twice', () => {
+      const CompWithChildListener = createComponent('test-app', (rf: RenderFlags, ctx: any) => {
+        if (rf & RenderFlags.Create) {
+          ɵɵelement(0, 'comp-with-listener-and-on-destroy');
+        }
+      }, 1, 0, [CompWithListenerThatDestroysItself]);
+
+      const fixture = new ComponentFixture(CompWithChildListener);
       fixture.update();
-      expect(log).toEqual([
-        'doCheck-A', 'doCheck-B', 'afterContentChecked-A', 'afterContentChecked-B',
-        'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
 
-      log.length = 0;
-      directiveInstance !.vcref.createEmbeddedView(directiveInstance !.tplRef, fixture.component);
-      expect(fixture.html).toEqual('<hooks vcref="">A</hooks><hooks></hooks><hooks>B</hooks>');
-      expect(log).toEqual([]);
-
-      log.length = 0;
-      fixture.update();
-      expect(fixture.html).toEqual('<hooks vcref="">A</hooks><hooks>C</hooks><hooks>B</hooks>');
-      expect(log).toEqual([
-        'doCheck-A', 'doCheck-B', 'onChanges-C', 'onInit-C', 'doCheck-C', 'afterContentInit-C',
-        'afterContentChecked-C', 'afterViewInit-C', 'afterViewChecked-C', 'afterContentChecked-A',
-        'afterContentChecked-B', 'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
-
-      log.length = 0;
-      fixture.update();
-      expect(log).toEqual([
-        'doCheck-A', 'doCheck-B', 'doCheck-C', 'afterContentChecked-C', 'afterViewChecked-C',
-        'afterContentChecked-A', 'afterContentChecked-B', 'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
-
-      log.length = 0;
-      const viewRef = directiveInstance !.vcref.detach(0);
-      fixture.update();
-      expect(log).toEqual([
-        'doCheck-A', 'doCheck-B', 'afterContentChecked-A', 'afterContentChecked-B',
-        'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
-
-      log.length = 0;
-      directiveInstance !.vcref.insert(viewRef !);
-      fixture.update();
-      expect(log).toEqual([
-        'doCheck-A', 'doCheck-B', 'doCheck-C', 'afterContentChecked-C', 'afterViewChecked-C',
-        'afterContentChecked-A', 'afterContentChecked-B', 'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
-
-      log.length = 0;
-      directiveInstance !.vcref.remove(0);
-      fixture.update();
-      expect(log).toEqual([
-        'onDestroy-C', 'doCheck-A', 'doCheck-B', 'afterContentChecked-A', 'afterContentChecked-B',
-        'afterViewChecked-A', 'afterViewChecked-B'
-      ]);
+      // Destroying the parent view will also destroy all of its children views and call their
+      // onDestroy hooks. Here, our child view attempts to destroy itself *again* in its
+      // onDestroy. This test exists to verify that no errors are thrown when doing this. We want
+      // the test component to destroy its own view in onDestroy because the destroy hooks happen
+      // as a *part of* view destruction. We also ensure that the test component has at least one
+      // listener so that it runs the event listener cleanup code path.
+      fixture.destroy();
     });
   });
 });

@@ -1,161 +1,211 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
+import {LifecycleHooksFeature, renderComponent, whenRendered} from './component';
+import {ɵɵdefineComponent, ɵɵdefineDirective, ɵɵdefineNgModule, ɵɵdefinePipe, ɵɵsetComponentScope, ɵɵsetNgModuleScope} from './definition';
+import {ɵɵCopyDefinitionFeature} from './features/copy_definition_feature';
+import {ɵɵInheritDefinitionFeature} from './features/inherit_definition_feature';
+import {ɵɵNgOnChangesFeature} from './features/ng_onchanges_feature';
+import {ɵɵProvidersFeature} from './features/providers_feature';
+import {ComponentDef, ComponentTemplate, ComponentType, DirectiveDef, DirectiveType, PipeDef} from './interfaces/definition';
+import {ɵɵComponentDeclaration, ɵɵDirectiveDeclaration, ɵɵFactoryDeclaration, ɵɵInjectorDeclaration, ɵɵNgModuleDeclaration, ɵɵPipeDeclaration} from './interfaces/public_definitions';
+import {ComponentDebugMetadata, DirectiveDebugMetadata, getComponent, getDirectiveMetadata, getDirectives, getHostElement, getRenderedText} from './util/discovery_utils';
 
-import {LifecycleHooksFeature, getHostElement, getRenderedText, renderComponent, whenRendered} from './component';
-import {defineComponent, defineDirective, defineNgModule, definePipe} from './definition';
-import {InheritDefinitionFeature} from './features/inherit_definition_feature';
-import {NgOnChangesFeature} from './features/ng_onchanges_feature';
-import {PublicFeature} from './features/public_feature';
-import {I18nExpInstruction, I18nInstruction, i18nExpMapping, i18nInterpolation, i18nInterpolationV} from './i18n';
-import {ComponentDef, ComponentDefInternal, ComponentTemplate, ComponentType, DirectiveDef, DirectiveDefFlags, DirectiveDefInternal, DirectiveType, PipeDef} from './interfaces/definition';
-
-export {ComponentFactory, ComponentFactoryResolver, ComponentRef} from './component_ref';
-export {QUERY_READ_CONTAINER_REF, QUERY_READ_ELEMENT_REF, QUERY_READ_FROM_NODE, QUERY_READ_TEMPLATE_REF, directiveInject, injectAttribute, injectChangeDetectorRef, injectElementRef, injectTemplateRef, injectViewContainerRef} from './di';
-export {RenderFlags} from './interfaces/definition';
-export {CssSelectorList} from './interfaces/projection';
-
-
-
-// Naming scheme:
-// - Capital letters are for creating things: T(Text), E(Element), D(Directive), V(View),
-// C(Container), L(Listener)
-// - lower case letters are for binding: b(bind)
-// - lower case letters are for binding target: p(property), a(attribute), k(class), s(style),
-// i(input)
-// - lower case letters for guarding life cycle hooks: l(lifeCycle)
-// - lower case for closing: c(containerEnd), e(elementEnd), v(viewEnd)
+export {NgModuleType} from '../metadata/ng_module_def';
+export {ComponentFactory, ComponentFactoryResolver, ComponentRef, injectComponentFactoryResolver} from './component_ref';
+export {ɵɵgetInheritedFactory} from './di';
+export {getLocaleId, setLocaleId} from './i18n/i18n_locale_id';
 // clang-format off
 export {
-
-  NO_CHANGE as NC,
-
-  bind as b,
-  interpolation1 as i1,
-  interpolation2 as i2,
-  interpolation3 as i3,
-  interpolation4 as i4,
-  interpolation5 as i5,
-  interpolation6 as i6,
-  interpolation7 as i7,
-  interpolation8 as i8,
-  interpolationV as iV,
-
-  container as C,
-  containerRefreshStart as cR,
-  containerRefreshEnd as cr,
-
-  element as Ee,
-  elementAttribute as a,
-  elementClassProp as cp,
-  elementEnd as e,
-  elementProperty as p,
-  elementStart as E,
-
-  elementStyling as s,
-  elementStylingMap as sm,
-  elementStyleProp as sp,
-  elementStylingApply as sa,
-
-  listener as L,
-  store as st,
-  load as ld,
-  loadDirective as d,
-
-  namespaceHTML as NH,
-  namespaceMathML as NM,
-  namespaceSVG as NS,
-
-  projection as P,
-  projectionDef as pD,
-
-  text as T,
-  textBinding as t,
-
-  reserveSlots as rS,
-
-  embeddedViewStart as V,
-  embeddedViewEnd as v,
   detectChanges,
   markDirty,
+  store,
   tick,
-} from './instructions';
+  ɵɵadvance,
 
+  ɵɵattribute,
+  ɵɵattributeInterpolate1,
+  ɵɵattributeInterpolate2,
+  ɵɵattributeInterpolate3,
+  ɵɵattributeInterpolate4,
+  ɵɵattributeInterpolate5,
+  ɵɵattributeInterpolate6,
+  ɵɵattributeInterpolate7,
+  ɵɵattributeInterpolate8,
+  ɵɵattributeInterpolateV,
+
+  ɵɵclassMap,
+  ɵɵclassMapInterpolate1,
+  ɵɵclassMapInterpolate2,
+  ɵɵclassMapInterpolate3,
+  ɵɵclassMapInterpolate4,
+  ɵɵclassMapInterpolate5,
+  ɵɵclassMapInterpolate6,
+  ɵɵclassMapInterpolate7,
+  ɵɵclassMapInterpolate8,
+  ɵɵclassMapInterpolateV,
+
+  ɵɵclassProp,
+
+  ɵɵdirectiveInject,
+
+  ɵɵelement,
+
+  ɵɵelementContainer,
+  ɵɵelementContainerEnd,
+  ɵɵelementContainerStart,
+  ɵɵelementEnd,
+  ɵɵelementStart,
+
+  ɵɵgetCurrentView,
+  ɵɵhostProperty,
+  ɵɵinjectAttribute,
+  ɵɵinvalidFactory,
+
+  ɵɵlistener,
+
+  ɵɵnamespaceHTML,
+  ɵɵnamespaceMathML,
+  ɵɵnamespaceSVG,
+
+  ɵɵnextContext,
+
+  ɵɵprojection,
+  ɵɵprojectionDef,
+  ɵɵproperty,
+  ɵɵpropertyInterpolate,
+  ɵɵpropertyInterpolate1,
+  ɵɵpropertyInterpolate2,
+  ɵɵpropertyInterpolate3,
+  ɵɵpropertyInterpolate4,
+  ɵɵpropertyInterpolate5,
+  ɵɵpropertyInterpolate6,
+  ɵɵpropertyInterpolate7,
+  ɵɵpropertyInterpolate8,
+  ɵɵpropertyInterpolateV,
+
+  ɵɵreference,
+
+  ɵɵstyleMap,
+  ɵɵstyleMapInterpolate1,
+  ɵɵstyleMapInterpolate2,
+  ɵɵstyleMapInterpolate3,
+  ɵɵstyleMapInterpolate4,
+  ɵɵstyleMapInterpolate5,
+  ɵɵstyleMapInterpolate6,
+  ɵɵstyleMapInterpolate7,
+  ɵɵstyleMapInterpolate8,
+  ɵɵstyleMapInterpolateV,
+
+  ɵɵstyleProp,
+  ɵɵstylePropInterpolate1,
+  ɵɵstylePropInterpolate2,
+  ɵɵstylePropInterpolate3,
+  ɵɵstylePropInterpolate4,
+  ɵɵstylePropInterpolate5,
+  ɵɵstylePropInterpolate6,
+  ɵɵstylePropInterpolate7,
+  ɵɵstylePropInterpolate8,
+  ɵɵstylePropInterpolateV,
+
+  ɵɵsyntheticHostListener,
+  ɵɵsyntheticHostProperty,
+
+  ɵɵtemplate,
+
+  ɵɵtext,
+  ɵɵtextInterpolate,
+  ɵɵtextInterpolate1,
+  ɵɵtextInterpolate2,
+  ɵɵtextInterpolate3,
+  ɵɵtextInterpolate4,
+  ɵɵtextInterpolate5,
+  ɵɵtextInterpolate6,
+  ɵɵtextInterpolate7,
+  ɵɵtextInterpolate8,
+  ɵɵtextInterpolateV,
+} from './instructions/all';
+export {ɵɵi18n, ɵɵi18nApply, ɵɵi18nAttributes, ɵɵi18nEnd, ɵɵi18nExp,ɵɵi18nPostprocess, ɵɵi18nStart} from './instructions/i18n';
+export {RenderFlags} from './interfaces/definition';
 export {
-  i18nApply as iA,
-  i18nMapping as iM,
-  i18nInterpolation as iI,
-  i18nInterpolationV as iIV,
-  i18nExpMapping as iEM,
-  I18nInstruction,
-  I18nExpInstruction
-} from './i18n';
-
-export {NgModuleFactory, NgModuleRef, NgModuleType} from './ng_module_ref';
-
-export {
-    AttributeMarker
+  AttributeMarker
 } from './interfaces/node';
-
+export {CssSelectorList, ProjectionSlots} from './interfaces/projection';
 export {
-  pipe as Pp,
-  pipeBind1 as pb1,
-  pipeBind2 as pb2,
-  pipeBind3 as pb3,
-  pipeBind4 as pb4,
-  pipeBindV as pbV,
+  setClassMetadata,
+} from './metadata';
+export {NgModuleFactory, NgModuleRef} from './ng_module_ref';
+export {
+  ɵɵpipe,
+  ɵɵpipeBind1,
+  ɵɵpipeBind2,
+  ɵɵpipeBind3,
+  ɵɵpipeBind4,
+  ɵɵpipeBindV,
 } from './pipe';
-
 export {
-  QueryList,
-  query as Q,
-  queryRefresh as qR,
-} from './query';
-export  {
-  registerContentQuery as Qr,
-  loadQueryList as ql,
-} from './instructions';
-
-export {
-  pureFunction0 as f0,
-  pureFunction1 as f1,
-  pureFunction2 as f2,
-  pureFunction3 as f3,
-  pureFunction4 as f4,
-  pureFunction5 as f5,
-  pureFunction6 as f6,
-  pureFunction7 as f7,
-  pureFunction8 as f8,
-  pureFunctionV as fV,
+  ɵɵpureFunction0,
+  ɵɵpureFunction1,
+  ɵɵpureFunction2,
+  ɵɵpureFunction3,
+  ɵɵpureFunction4,
+  ɵɵpureFunction5,
+  ɵɵpureFunction6,
+  ɵɵpureFunction7,
+  ɵɵpureFunction8,
+  ɵɵpureFunctionV,
 } from './pure_function';
+export {
+  ɵɵcontentQuery,
+  ɵɵloadQuery,
+  ɵɵqueryRefresh,
+  ɵɵviewQuery} from './query';
+export {
+  ɵɵdisableBindings,
 
-
+  ɵɵenableBindings,
+  ɵɵrestoreView,
+} from './state';
+export {NO_CHANGE} from './tokens';
+export { ɵɵresolveBody, ɵɵresolveDocument,ɵɵresolveWindow} from './util/misc_utils';
+export { ɵɵtemplateRefExtractor} from './view_engine_compatibility_prebound';
 // clang-format on
 
 export {
+  ComponentDebugMetadata,
   ComponentDef,
-  ComponentDefInternal,
   ComponentTemplate,
   ComponentType,
+  DirectiveDebugMetadata,
   DirectiveDef,
-  DirectiveDefFlags,
-  DirectiveDefInternal,
   DirectiveType,
-  NgOnChangesFeature,
-  InheritDefinitionFeature,
-  PublicFeature,
-  PipeDef,
-  LifecycleHooksFeature,
-  defineComponent,
-  defineDirective,
-  defineNgModule,
-  definePipe,
+  getComponent,
+  getDirectiveMetadata,
+  getDirectives,
   getHostElement,
   getRenderedText,
+  LifecycleHooksFeature,
+  PipeDef,
   renderComponent,
   whenRendered,
+  ɵɵComponentDeclaration,
+  ɵɵCopyDefinitionFeature,
+  ɵɵdefineComponent,
+  ɵɵdefineDirective,
+  ɵɵdefineNgModule,
+  ɵɵdefinePipe,
+  ɵɵDirectiveDeclaration,
+  ɵɵFactoryDeclaration,
+  ɵɵInheritDefinitionFeature,
+  ɵɵInjectorDeclaration,
+  ɵɵNgModuleDeclaration,
+  ɵɵNgOnChangesFeature,
+  ɵɵPipeDeclaration,
+  ɵɵProvidersFeature,
+  ɵɵsetComponentScope,
+  ɵɵsetNgModuleScope,
 };

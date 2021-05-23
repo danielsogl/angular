@@ -1,18 +1,19 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Optional, SkipSelf, StaticProvider} from '../../di';
+import {Optional, SkipSelf, StaticProvider, ɵɵdefineInjectable} from '../../di';
+import {DefaultKeyValueDifferFactory} from './default_keyvalue_differ';
 
 
 /**
  * A differ that tracks changes made to an object over time.
  *
- *
+ * @publicApi
  */
 export interface KeyValueDiffer<K, V> {
   /**
@@ -40,7 +41,7 @@ export interface KeyValueDiffer<K, V> {
  * An object describing the changes in the `Map` or `{[k:string]: string}` since last time
  * `KeyValueDiffer#diff()` was invoked.
  *
- *
+ * @publicApi
  */
 export interface KeyValueChanges<K, V> {
   /**
@@ -74,7 +75,7 @@ export interface KeyValueChanges<K, V> {
 /**
  * Record representing the item change information.
  *
- *
+ * @publicApi
  */
 export interface KeyValueChangeRecord<K, V> {
   /**
@@ -96,7 +97,7 @@ export interface KeyValueChangeRecord<K, V> {
 /**
  * Provides a factory for {@link KeyValueDiffer}.
  *
- *
+ * @publicApi
  */
 export interface KeyValueDifferFactory {
   /**
@@ -110,17 +111,28 @@ export interface KeyValueDifferFactory {
   create<K, V>(): KeyValueDiffer<K, V>;
 }
 
+export function defaultKeyValueDiffersFactory() {
+  return new KeyValueDiffers([new DefaultKeyValueDifferFactory()]);
+}
+
 /**
  * A repository of different Map diffing strategies used by NgClass, NgStyle, and others.
  *
+ * @publicApi
  */
 export class KeyValueDiffers {
+  /** @nocollapse */
+  static ɵprov = /** @pureOrBreakMyCode */ ɵɵdefineInjectable(
+      {token: KeyValueDiffers, providedIn: 'root', factory: defaultKeyValueDiffersFactory});
+
   /**
    * @deprecated v4.0.0 - Should be private.
    */
   factories: KeyValueDifferFactory[];
 
-  constructor(factories: KeyValueDifferFactory[]) { this.factories = factories; }
+  constructor(factories: KeyValueDifferFactory[]) {
+    this.factories = factories;
+  }
 
   static create<S>(factories: KeyValueDifferFactory[], parent?: KeyValueDiffers): KeyValueDiffers {
     if (parent) {
@@ -154,12 +166,10 @@ export class KeyValueDiffers {
     return {
       provide: KeyValueDiffers,
       useFactory: (parent: KeyValueDiffers) => {
-        if (!parent) {
-          // Typically would occur when calling KeyValueDiffers.extend inside of dependencies passed
-          // to bootstrap(), which would override default pipes instead of extending them.
-          throw new Error('Cannot extend KeyValueDiffers without a parent injector');
-        }
-        return KeyValueDiffers.create(factories, parent);
+        // if parent is null, it means that we are in the root injector and we have just overridden
+        // the default injection mechanism for KeyValueDiffers, in such a case just assume
+        // `defaultKeyValueDiffersFactory`.
+        return KeyValueDiffers.create(factories, parent || defaultKeyValueDiffersFactory());
       },
       // Dependency technically isn't optional, but we can provide a better error message this way.
       deps: [[KeyValueDiffers, new SkipSelf(), new Optional()]]

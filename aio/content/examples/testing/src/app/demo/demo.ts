@@ -1,25 +1,24 @@
-/* tslint:disable:forin */
+// tslint:disable: directive-selector forin no-input-rename
 import { Component, ContentChildren, Directive, EventEmitter,
          Injectable, Input, Output, Optional,
          HostBinding, HostListener,
          OnInit, OnChanges, OnDestroy,
          Pipe, PipeTransform,
-         SimpleChange } from '@angular/core';
+         SimpleChanges } from '@angular/core';
 
 import { of } from 'rxjs';
 import { delay } from 'rxjs/operators';
 
 ////////// The App: Services and Components for the tests. //////////////
 
-export class Hero {
+export interface Hero {
   name: string;
 }
 
 ////////// Services ///////////////
-// #docregion ValueService
 @Injectable()
 export class ValueService {
-  protected value = 'real value';
+  value = 'real value';
 
   getValue() { return this.value; }
   setValue(value: string) { this.value = value; }
@@ -32,7 +31,6 @@ export class ValueService {
     return of('observable delay value').pipe(delay(10));
   }
 }
-// #enddocregion ValueService
 
 // #docregion MasterService
 @Injectable()
@@ -46,16 +44,14 @@ export class MasterService {
 /*
  * Reverse the input string.
 */
-// #docregion ReversePipe
 @Pipe({ name: 'reverse' })
 export class ReversePipe implements PipeTransform {
   transform(s: string) {
     let r = '';
-    for (let i = s.length; i; )  { r += s[--i]; };
+    for (let i = s.length; i; ) { r += s[--i]; }
     return r;
   }
 }
-// #enddocregion ReversePipe
 
 //////////// Components /////////////
 @Component({
@@ -66,8 +62,8 @@ export class ReversePipe implements PipeTransform {
  `
 })
 export class BankAccountComponent {
-  @Input() bank: string;
-  @Input('account') id: string;
+  @Input() bank = '';
+  @Input('account') id = '';
 
   // Removed on 12/02/2016 when ceased public discussion of the `Renderer`. Revive in future?
   // constructor(private renderer: Renderer, private el: ElementRef ) {
@@ -122,7 +118,7 @@ export class Child1Component {
   template: '<div>Child-2({{text}})</div>'
 })
 export class Child2Component {
-  @Input() text: string;
+  @Input() text = '';
 }
 
 @Component({
@@ -130,7 +126,7 @@ export class Child2Component {
   template: '<div>Child-3({{text}})</div>'
 })
 export class Child3Component {
-  @Input() text: string;
+  @Input() text = '';
 }
 
 @Component({
@@ -191,7 +187,7 @@ export class ParentComponent { }
   template: `<div class="hero" (click)="click()">Original {{hero.name}}</div>`
 })
 export class IoComponent {
-  @Input() hero: Hero;
+  @Input() hero!: Hero;
   @Output() selected = new EventEmitter<Hero>();
   click() { this.selected.emit(this.hero); }
 }
@@ -210,7 +206,7 @@ export class IoComponent {
 })
 export class IoParentComponent {
   heroes: Hero[] = [ {name: 'Bob'}, {name: 'Carol'}, {name: 'Ted'}, {name: 'Alice'} ];
-  selectedHero: Hero;
+  selectedHero!: Hero;
   onSelect(hero: Hero) { this.selectedHero = hero; }
 }
 
@@ -246,9 +242,9 @@ export class TestViewProvidersComponent {
   templateUrl: './demo-external-template.html'
 })
 export class ExternalTemplateComponent implements OnInit {
-  serviceValue: string;
+  serviceValue = '';
 
-  constructor(@Optional() private service: ValueService) {  }
+  constructor(@Optional() private service?: ValueService) {  }
 
   ngOnInit() {
     if (this.service) { this.serviceValue = this.service.getValue(); }
@@ -309,12 +305,12 @@ export class MyIfChildComponent implements OnInit, OnChanges, OnDestroy {
     this.changeLog.push('ngOnDestroy called');
   }
 
-  ngOnChanges(changes: {[propertyName: string]: SimpleChange}) {
-    for (let propName in changes) {
+  ngOnChanges(changes: SimpleChanges) {
+    for (const propName in changes) {
       this.ngOnChangesCounter += 1;
-      let prop = changes[propName];
-      let cur  = JSON.stringify(prop.currentValue);
-      let prev = JSON.stringify(prop.previousValue);
+      const prop = changes[propName];
+      const cur  = JSON.stringify(prop.currentValue);
+      const prev = JSON.stringify(prop.previousValue);
       this.changeLog.push(`${propName}: currentValue = ${cur}, previousValue = ${prev}`);
     }
   }
@@ -424,9 +420,9 @@ export const demoProviders = [MasterService, ValueService];
 
 ////////////////////
 ////////////
-import { NgModule }      from '@angular/core';
+import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { FormsModule }   from '@angular/forms';
+import { FormsModule } from '@angular/forms';
 
 @NgModule({
   imports: [BrowserModule, FormsModule],
